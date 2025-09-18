@@ -1,0 +1,36 @@
+
+:root{
+  --bg:#0b1220; --panel:#0f172a; --ink:#e5e7eb; --muted:#9ca3af; --accent:#22c55e;
+  --border:#1f2937; --accent2:#38bdf8; --warn:#f59e0b;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,Helvetica Neue,Arial}
+.page{max-width:1120px;margin:0 auto;padding:32px 20px}
+h1,h2,h3{color:#fff;letter-spacing:.1px}
+h1{font-size:32px;margin:0 0 6px}
+h2{font-size:22px;margin:28px 0 12px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:18px;margin:22px 0 10px}
+.badgebar{display:flex;gap:12px;flex-wrap:wrap;margin:8px 0 18px}
+.badge{background:var(--panel);border:1px solid var(--border);padding:6px 10px;border-radius:999px;color:var(--muted)}
+.kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:12px 0 8px}
+.kpi{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px 16px}
+.kpi .label{color:var(--muted);font-size:.85rem;margin-bottom:6px}
+.kpi .value{font-size:1.6rem;font-weight:700;color:#fff}
+.kpi .sub{color:var(--muted);font-size:.85rem;margin-top:6px}
+.grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:12px}
+figure{margin:0}
+figure img{width:100%;display:block;border-radius:10px;border:1px solid var(--border)}
+figcaption{color:var(--muted);font-size:.85rem;margin-top:6px}
+.tablewrap{overflow:auto;border:1px solid var(--border);border-radius:12px}
+table{width:100%;border-collapse:collapse;background:var(--panel)}
+th,td{padding:10px 12px;border-bottom:1px solid var(--border);text-align:left}
+thead th{position:sticky;top:0;background:#0e162a;color:#e2e8f0}
+tbody tr:nth-child(odd){background:#0d1526}
+.note{border-left:4px solid var(--accent2);padding:10px 12px;background:#0d1625;border-radius:8px;margin-top:8px;color:#cde1ff}
+.toc{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px}
+.toc a{color:var(--accent2);text-decoration:none;border:1px solid var(--border);border-radius:999px;padding:6px 10px}
+@media (max-width:960px){
+  .kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .grid-2{grid-template-columns:1fr}
+}
