@@ -7,7 +7,7 @@ layout: null
 
 <div class="page">
 <h1>Informe Operativo UCI</h1>
-<div class="badgebar"><span class="badge">Actualizado: 2025-09-18 22:41 UTC</span><span class="badge">Período: 2024-08-16 → 2025-08-29</span></div>
+<div class="badgebar"><span class="badge">Actualizado: 2025-09-18 23:27 UTC</span><span class="badge">Período: 2024-08-16 → 2025-09-12</span></div>
 <div class="toc">
 <a href="#resumen-ejecutivo">Resumen</a>
 <a href="#dinamica-asistencial">Dinámica</a>
@@ -17,14 +17,14 @@ layout: null
 </div>
 <h2 id="resumen-ejecutivo">Resumen ejecutivo</h2>
 <div class="kpi-grid">
-<div class="kpi"><div class="label">Admisiones</div><div class="value">91</div></div>
-<div class="kpi"><div class="label">Egresos</div><div class="value">90</div></div>
-<div class="kpi"><div class="label">Óbitos</div><div class="value">19</div><div class="sub">Mort./egresos 21.1% · Mort./adm 20.9%</div></div>
-<div class="kpi"><div class="label">Vent. invasiva</div><div class="value">41.8%</div></div>
-<div class="kpi"><div class="label">LOS mediana</div><div class="value">4.0 d</div><div class="sub">Q1 2.0 – Q3 9.0 · media 8.1</div></div>
+<div class="kpi"><div class="label">Admisiones</div><div class="value">92</div></div>
+<div class="kpi"><div class="label">Egresos</div><div class="value">91</div></div>
+<div class="kpi"><div class="label">Óbitos</div><div class="value">19</div><div class="sub">Mort./egresos 20.9% · Mort./adm 20.7%</div></div>
+<div class="kpi"><div class="label">Vent. invasiva</div><div class="value">41.3%</div></div>
+<div class="kpi"><div class="label">LOS mediana</div><div class="value">4.0 d</div><div class="sub">Q1 2.0 – Q3 9.0 · media 8.4</div></div>
 <div class="kpi"><div class="label">APACHE II 24 h</div><div class="value">16.0</div><div class="sub">Q1 10.0 – Q3 19.0</div></div>
 <div class="kpi"><div class="label">SOFA 48 h</div><div class="value">5.0</div><div class="sub">Q1 2.0 – Q3 8.0</div></div>
-<div class="kpi"><div class="label">Dispositivos/100 adm</div><div class="value">96.7 CVC</div><div class="sub">HD 15.4 · Líneas 27.5 · ECG/pt 1.70</div></div>
+<div class="kpi"><div class="label">Dispositivos/100 adm</div><div class="value">97.8 CVC</div><div class="sub">HD 16.3 · Líneas 29.3 · ECG/pt 1.70</div></div>
 </div>
 <h2 id="dinamica-asistencial">Dinámica asistencial</h2>
 <div class="grid-2">
@@ -49,7 +49,7 @@ layout: null
 | 5 Dr Rodney Recalde | 17 | 4 | 23.5% | 4.0 | 12.0 | 4.0 |
 | 4 Dra Jazmin Cáceres | 21 | 3 | 15.0% | 3.0 | 15.0 | 3.0 |
 | 6 Dr Pablo Rolon | 11 | 3 | 27.3% | 9.0 | 10.0 | 3.0 |
-| 1 Dr Oscar Gómez | 7 | 3 | 42.9% | 30.0 | 14.0 | 8.0 |
+| 1 Dr Oscar Gómez | 8 | 3 | 37.5% | 31.5 | 15.0 | 8.5 |
 | 2 Dr Rubén Goto | 10 | 2 | 20.0% | 5.0 | 17.5 | 5.5 |
 </div>
 <h3>Por origen del paciente (Top 10)</h3>
@@ -59,7 +59,7 @@ layout: null
 | Reanimación | 26 | 11 | 42.3% | 10.0 |
 | Traumatología | 23 | 3 | 13.6% | 3.0 |
 | Cx Gral Piso | 20 | 1 | 5.0% | 3.0 |
-| Neurocx | 8 | 0 | 0.0% | 2.5 |
+| Neurocx | 9 | 0 | 0.0% | 3.0 |
 | Clínica Médica | 4 | 1 | 25.0% | 5.0 |
 | Cx Gral Urgencias | 4 | 3 | 75.0% | 5.0 |
 | Urología | 2 | 0 | 0.0% | 4.5 |
@@ -73,7 +73,7 @@ layout: null
 |---|---|---|---|---|
 | Neurocx Urgencias | 17 | 5 | 29.4% | 4.0 |
 | Traumatología Programada | 14 | 1 | 7.7% | 3.0 |
-| Cirugía Gral y especialidades Programada | 10 | 0 | 0.0% | 1.5 |
+| Cirugía Gral y especialidades Programada | 11 | 0 | 0.0% | 2.0 |
 | Paciente Clínico | 9 | 6 | 66.7% | 10.0 |
 | Paciente Qx con complicación Quirúrgica | 9 | 2 | 22.2% | 6.0 |
 | Cirugía Gral y especialidades de Urgencias | 7 | 1 | 14.3% | 10.0 |
@@ -86,7 +86,7 @@ layout: null
 <div class="tablewrap">
 | Estado | Pacientes |
 |---|---|
-| Negativo | 44 |
+| Negativo | 45 |
 | Pendiente HR ingreso | 34 |
 | HR de Prevalencia | 6 |
 | HR de Ingreso | 5 |
