@@ -67,7 +67,26 @@ def median_iqr(x: pd.Series):
 def safe_pct(num, den) -> float:
     return float(num)/float(den)*100.0 if den else 0.0
 
+def fmt_int(x) -> str:
+    if x is None or (isinstance(x, float) and (np.isnan(x))):
+        return "0"
+    try:
+        return f"{int(round(float(x))):,}".replace(",", ".")
+    except Exception:
+        return str(x)
+
+def fmt_pct(x, nd=1) -> str:
+    if x is None or (isinstance(x, float) and (np.isnan(x))):
+        return "0.0%"
+    return f"{float(x):.{nd}f}%"
+
+def fmt_float(x, nd=1) -> str:
+    if x is None or (isinstance(x, float) and (np.isnan(x))):
+        return f"{0:.{nd}f}"
+    return f"{float(x):.{nd}f}"
+
 def md_table(df: pd.DataFrame, index=False) -> str:
+    # Formatea a Markdown; el CSS aplicará estilo
     try:
         return df.to_markdown(index=index)
     except Exception:
@@ -220,6 +239,10 @@ def prepare(df_raw: pd.DataFrame) -> pd.DataFrame:
 # Figuras
 # =========================
 def timeseries_and_census(df: pd.DataFrame):
+    # Ajustes de estilo gráfico (sobrios)
+    plt.rcParams["figure.dpi"] = 150
+    plt.rcParams["figure.figsize"] = (9, 4)
+
     adm = df.groupby(df["fec_ing"].dt.date).size().rename("Admisiones").to_frame()
     dis = df[df["fec_egr"].notna()].groupby(df["fec_egr"].dt.date).size().rename("Egresos").to_frame()
 
@@ -244,53 +267,74 @@ def timeseries_and_census(df: pd.DataFrame):
                 census.loc[d] = int(census.loc[d]) + 1
 
     fig1 = plt.figure()
-    ts.plot(ax=plt.gca())
-    plt.title("Admisiones y Egresos diarios"); plt.xlabel("Fecha"); plt.ylabel("Conteo")
-    plt.tight_layout(); plt.savefig(ASSETS_DIR / "timeseries_adm_disc.png", dpi=150); plt.close(fig1)
+    ax = plt.gca()
+    ts.plot(ax=ax)
+    ax.set_title("Admisiones y Egresos diarios")
+    ax.set_xlabel("Fecha"); ax.set_ylabel("Conteo")
+    ax.grid(True, axis="y", alpha=.3)
+    plt.tight_layout(); plt.savefig(ASSETS_DIR / "timeseries_adm_disc.png"); plt.close(fig1)
 
     fig2 = plt.figure()
-    census.plot(ax=plt.gca())
-    plt.title("Censo diario UCI (pacientes presentes)"); plt.xlabel("Fecha"); plt.ylabel("Pacientes")
-    plt.tight_layout(); plt.savefig(ASSETS_DIR / "census_daily.png", dpi=150); plt.close(fig2)
+    ax2 = plt.gca()
+    census.plot(ax=ax2)
+    ax2.set_title("Censo diario UCI (pacientes presentes)")
+    ax2.set_xlabel("Fecha"); ax2.set_ylabel("Pacientes")
+    ax2.grid(True, axis="y", alpha=.3)
+    plt.tight_layout(); plt.savefig(ASSETS_DIR / "census_daily.png"); plt.close(fig2)
 
     return ts, census
 
 def distribution_plots(df: pd.DataFrame):
+    plt.rcParams["figure.figsize"] = (8, 4)
+
     los = pd.to_numeric(df["los_final"], errors="coerce").dropna()
     if not los.empty:
         fig = plt.figure()
-        plt.hist(los, bins=range(0, int(max(1, los.max())) + 2))
-        plt.title("Distribución de LOS (días)"); plt.xlabel("Días"); plt.ylabel("Pacientes")
-        plt.tight_layout(); plt.savefig(ASSETS_DIR / "los_hist.png", dpi=150); plt.close(fig)
+        ax = plt.gca()
+        bins = range(0, int(max(1, los.max())) + 2)
+        ax.hist(los, bins=bins)
+        ax.set_title("Distribución de LOS (días)"); ax.set_xlabel("Días"); ax.set_ylabel("Pacientes")
+        ax.grid(True, axis="y", alpha=.3)
+        plt.tight_layout(); plt.savefig(ASSETS_DIR / "los_hist.png"); plt.close(fig)
 
     ap = pd.to_numeric(df["apache2"], errors="coerce").dropna()
     if not ap.empty:
         fig = plt.figure()
-        plt.boxplot(ap, vert=True, labels=["APACHE II (24 h)"])
-        plt.title("APACHE II (24 h)"); plt.ylabel("Puntaje")
-        plt.tight_layout(); plt.savefig(ASSETS_DIR / "apache_box.png", dpi=150); plt.close(fig)
+        ax = plt.gca()
+        ax.boxplot(ap, vert=True, labels=["APACHE II (24 h)"])
+        ax.set_title("APACHE II (24 h)"); ax.set_ylabel("Puntaje")
+        ax.grid(True, axis="y", alpha=.3)
+        plt.tight_layout(); plt.savefig(ASSETS_DIR / "apache_box.png"); plt.close(fig)
 
     so = pd.to_numeric(df["sofa48"], errors="coerce").dropna()
     if not so.empty:
         fig = plt.figure()
-        plt.boxplot(so, vert=True, labels=["SOFA 48 h"])
-        plt.title("SOFA a 48 h"); plt.ylabel("Puntaje")
-        plt.tight_layout(); plt.savefig(ASSETS_DIR / "sofa_box.png", dpi=150); plt.close(fig)
+        ax = plt.gca()
+        ax.boxplot(so, vert=True, labels=["SOFA 48 h"])
+        ax.set_title("SOFA a 48 h"); ax.set_ylabel("Puntaje")
+        ax.grid(True, axis="y", alpha=.3)
+        plt.tight_layout(); plt.savefig(ASSETS_DIR / "sofa_box.png"); plt.close(fig)
 
 def bar_plots(df: pd.DataFrame):
+    plt.rcParams["figure.figsize"] = (8, 4)
+
     k = df["kpc_mbl"].fillna("").replace("", "No informado").value_counts().sort_values(ascending=False)
     if not k.empty:
         fig = plt.figure()
-        k.plot(kind="bar", ax=plt.gca())
-        plt.title("Estado KPC/MBL"); plt.ylabel("Pacientes")
-        plt.tight_layout(); plt.savefig(ASSETS_DIR / "kpc_bars.png", dpi=150); plt.close(fig)
+        ax = plt.gca()
+        k.plot(kind="bar", ax=ax)
+        ax.set_title("Estado KPC/MBL"); ax.set_ylabel("Pacientes")
+        ax.grid(True, axis="y", alpha=.3)
+        plt.tight_layout(); plt.savefig(ASSETS_DIR / "kpc_bars.png"); plt.close(fig)
 
     o = df["origen"].fillna("No informado").value_counts().head(8)
     if not o.empty:
         fig = plt.figure()
-        o.plot(kind="bar", ax=plt.gca())
-        plt.title("Casos por origen (Top 8)"); plt.ylabel("Pacientes")
-        plt.tight_layout(); plt.savefig(ASSETS_DIR / "casemix_bars.png", dpi=150); plt.close(fig)
+        ax = plt.gca()
+        o.plot(kind="bar", ax=ax)
+        ax.set_title("Casos por origen (Top 8)"); ax.set_ylabel("Pacientes")
+        ax.grid(True, axis="y", alpha=.3)
+        plt.tight_layout(); plt.savefig(ASSETS_DIR / "casemix_bars.png"); plt.close(fig)
 
 # =========================
 # KPIs y tablas
@@ -341,7 +385,7 @@ def group_tables(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
     casos_med = g.size().rename("Casos")
     obitos_med = g["cond_egreso"].apply(lambda s: (s == "Óbito").sum()).rename("Óbitos")
     egresos_med = g["fec_egr"].apply(lambda s: s.notna().sum())
-    mort_med = (obitos_med / egresos_med.replace(0, np.nan) * 100).fillna(0.0).rename("Mort.%")
+    mort_med = (obitos_med / egresos_med.replace(0, np.nan) * 100).rename("Mort.%")
     los_med = g["los_final"].median().rename("LOS_med")
     ap_med = g["apache2"].median().rename("APACHE_med")
     so_med = g["sofa48"].median().rename("SOFA48_med")
@@ -353,7 +397,7 @@ def group_tables(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
     casos_org = g2.size().rename("Casos")
     obitos_org = g2["cond_egreso"].apply(lambda s: (s == "Óbito").sum()).rename("Óbitos")
     egresos_org = g2["fec_egr"].apply(lambda s: s.notna().sum())
-    mort_org = (obitos_org / egresos_org.replace(0, np.nan) * 100).fillna(0.0).rename("Mort.%")
+    mort_org = (obitos_org / egresos_org.replace(0, np.nan) * 100).rename("Mort.%")
     los_org = g2["los_final"].median().rename("LOS_med")
     tab_origen = pd.concat([casos_org, obitos_org, mort_org, los_org], axis=1)\
                    .sort_values("Casos", ascending=False).head(10)
@@ -363,7 +407,7 @@ def group_tables(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
     casos_tipo = g3.size().rename("Casos")
     obitos_tipo = g3["cond_egreso"].apply(lambda s: (s == "Óbito").sum()).rename("Óbitos")
     egresos_tipo = g3["fec_egr"].apply(lambda s: s.notna().sum())
-    mort_tipo = (obitos_tipo / egresos_tipo.replace(0, np.nan) * 100).fillna(0.0).rename("Mort.%")
+    mort_tipo = (obitos_tipo / egresos_tipo.replace(0, np.nan) * 100).rename("Mort.%")
     los_tipo = g3["los_final"].median().rename("LOS_med")
     tab_tipo = pd.concat([casos_tipo, obitos_tipo, mort_tipo, los_tipo], axis=1)\
                  .sort_values("Casos", ascending=False).head(10)
@@ -371,53 +415,177 @@ def group_tables(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
     # KPC/MBL
     tab_kpc = df["kpc_mbl"].fillna("No informado").value_counts().rename_axis("Estado").to_frame("Pacientes")
 
+    # Redondeos y formateos de columnas numéricas
+    for t in [tab_med, tab_origen, tab_tipo]:
+        if "Mort.%" in t.columns:
+            t["Mort.%"] = t["Mort.%"].astype(float).round(1)
+        if "LOS_med" in t.columns:
+            t["LOS_med"] = t["LOS_med"].astype(float).round(1)
+
     return {"por_medico": tab_med, "por_origen": tab_origen, "por_tipo": tab_tipo, "kpc": tab_kpc}
 
 # =========================
-# Render Markdown (Jekyll)
+# CSS y render Markdown
 # =========================
+CSS_CONTENT = """
+:root{
+  --bg:#0b1220; --panel:#0f172a; --ink:#e5e7eb; --muted:#9ca3af; --accent:#22c55e;
+  --border:#1f2937; --accent2:#38bdf8; --warn:#f59e0b;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,Helvetica Neue,Arial}
+.page{max-width:1120px;margin:0 auto;padding:32px 20px}
+h1,h2,h3{color:#fff;letter-spacing:.1px}
+h1{font-size:32px;margin:0 0 6px}
+h2{font-size:22px;margin:28px 0 12px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:18px;margin:22px 0 10px}
+.badgebar{display:flex;gap:12px;flex-wrap:wrap;margin:8px 0 18px}
+.badge{background:var(--panel);border:1px solid var(--border);padding:6px 10px;border-radius:999px;color:var(--muted)}
+.kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:12px 0 8px}
+.kpi{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px 16px}
+.kpi .label{color:var(--muted);font-size:.85rem;margin-bottom:6px}
+.kpi .value{font-size:1.6rem;font-weight:700;color:#fff}
+.kpi .sub{color:var(--muted);font-size:.85rem;margin-top:6px}
+.grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:12px}
+figure{margin:0}
+figure img{width:100%;display:block;border-radius:10px;border:1px solid var(--border)}
+figcaption{color:var(--muted);font-size:.85rem;margin-top:6px}
+.tablewrap{overflow:auto;border:1px solid var(--border);border-radius:12px}
+table{width:100%;border-collapse:collapse;background:var(--panel)}
+th,td{padding:10px 12px;border-bottom:1px solid var(--border);text-align:left}
+thead th{position:sticky;top:0;background:#0e162a;color:#e2e8f0}
+tbody tr:nth-child(odd){background:#0d1526}
+.note{border-left:4px solid var(--accent2);padding:10px 12px;background:#0d1625;border-radius:8px;margin-top:8px;color:#cde1ff}
+.toc{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px}
+.toc a{color:var(--accent2);text-decoration:none;border:1px solid var(--border);border-radius:999px;padding:6px 10px}
+@media (max-width:960px){
+  .kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .grid-2{grid-template-columns:1fr}
+}
+"""
+
 def fmt_dt(d) -> str:
     if d is None or pd.isna(d):
         return "-"
     return pd.to_datetime(d).strftime("%Y-%m-%d")
 
+def write_css():
+    (ASSETS_DIR / "report.css").write_text(CSS_CONTENT, encoding="utf-8")
+
 def write_markdown(kpis: dict, tables: dict):
+    # Asegura CSS
+    write_css()
+
+    # KPIs formateados
+    k_adm = fmt_int(kpis['admisiones'])
+    k_egr = fmt_int(kpis['egresos'])
+    k_obt = fmt_int(kpis['obitos'])
+    k_m_eg = fmt_pct(kpis['mort_sobre_egresos'])
+    k_m_ad = fmt_pct(kpis['mort_sobre_admisiones'])
+    k_los_med = fmt_float(kpis['los_mediana'])
+    k_los_iqr = f"Q1 {fmt_float(kpis['los_q1'])} – Q3 {fmt_float(kpis['los_q3'])}"
+    k_los_mean = fmt_float(kpis['los_media'])
+    k_ap_med = fmt_float(kpis['apache_med'])
+    k_ap_iqr = f"Q1 {fmt_float(kpis['apache_q1'])} – Q3 {fmt_float(kpis['apache_q3'])}"
+    k_sf_med = fmt_float(kpis['sofa_med'])
+    k_sf_iqr = f"Q1 {fmt_float(kpis['sofa_q1'])} – Q3 {fmt_float(kpis['sofa_q3'])}"
+    k_vi = fmt_pct(kpis['vi_rate'])
+    k_cvc = fmt_float(kpis['vvc_per100'])
+    k_hd = fmt_float(kpis['hd_per100'])
+    k_la = fmt_float(kpis['la_per100'])
+    k_ecg = fmt_float(kpis['ecg_prom_pt'], nd=2)
+
     lines = []
+    # Front matter para Jekyll
     lines += ["---", "title: Informe Operativo UCI", "layout: null", "---", ""]
-    lines += ["# Informe Operativo UCI", ""]
-    lines += [f"_Actualizado: {datetime.utcnow().strftime('%Y-%m-%d %H:%M')} (UTC)_", ""]
-    lines += [f"**Período:** {fmt_dt(kpis['periodo_ini'])} → {fmt_dt(kpis['periodo_fin'])}", ""]
-    lines += ["## Resumen ejecutivo", ""]
-    lines += [f"- **Admisiones:** {kpis['admisiones']}"]
-    lines += [f"- **Egresos:** {kpis['egresos']}"]
-    lines += [f"- **Óbitos:** {kpis['obitos']}  ·  **Mortalidad/egresos:** {kpis['mort_sobre_egresos']:.1f}%  ·  **Mortalidad/admisiones:** {kpis['mort_sobre_admisiones']:.1f}%"]
-    lines += [f"- **LOS (días):** mediana {kpis['los_mediana'] or 0:.1f}  (Q1 {kpis['los_q1'] or 0:.1f} – Q3 {kpis['los_q3'] or 0:.1f})  ·  media {kpis['los_media'] or 0:.1f}"]
-    lines += [f"- **APACHE II (24 h):** mediana {kpis['apache_med'] or 0:.1f}  (Q1 {kpis['apache_q1'] or 0:.1f} – Q3 {kpis['apache_q3'] or 0:.1f})"]
-    lines += [f"- **SOFA 48 h:** mediana {kpis['sofa_med'] or 0:.1f}  (Q1 {kpis['sofa_q1'] or 0:.1f} – Q3 {kpis['sofa_q3'] or 0:.1f})"]
-    vi_rate = 0.0 if kpis["vi_rate"] is None else kpis["vi_rate"]
-    lines += [f"- **Ventilación invasiva:** {vi_rate:.1f}% de los pacientes"]
-    lines += [f"- **Dispositivos/100 adm.:** CVC {kpis['vvc_per100']:.1f} · HD {kpis['hd_per100']:.1f} · Líneas art. {kpis['la_per100']:.1f} · ECG/paciente {kpis['ecg_prom_pt']:.2f}", ""]
-    lines += ["## Dinámica asistencial", ""]
-    lines += ["![Admisiones y egresos](assets/timeseries_adm_disc.png)", ""]
-    lines += ["![Censo diario](assets/census_daily.png)", ""]
-    lines += ["## Severidad y estancia", ""]
+    # Enlace a CSS (desde contenido, funciona en Pages)
+    lines += ['<link rel="stylesheet" href="assets/report.css">', '']
+    lines += ['<div class="page">']
+    lines += [f'<h1>Informe Operativo UCI</h1>']
+    lines += [f'<div class="badgebar"><span class="badge">Actualizado: {datetime.utcnow().strftime("%Y-%m-%d %H:%M")} UTC</span><span class="badge">Período: {fmt_dt(kpis["periodo_ini"])} → {fmt_dt(kpis["periodo_fin"])}</span></div>']
+
+    # TOC
+    lines += ['<div class="toc">']
+    lines += ['<a href="#resumen-ejecutivo">Resumen</a>',
+              '<a href="#dinamica-asistencial">Dinámica</a>',
+              '<a href="#severidad-y-estancia">Severidad</a>',
+              '<a href="#vigilancia-microbiologica">KPC/MBL</a>',
+              '<a href="#casuistica-top">Casuística</a>']
+    lines += ['</div>']
+
+    # KPIs en tarjetas
+    lines += ['<h2 id="resumen-ejecutivo">Resumen ejecutivo</h2>']
+    lines += ['<div class="kpi-grid">']
+    lines += [f'<div class="kpi"><div class="label">Admisiones</div><div class="value">{k_adm}</div></div>']
+    lines += [f'<div class="kpi"><div class="label">Egresos</div><div class="value">{k_egr}</div></div>']
+    lines += [f'<div class="kpi"><div class="label">Óbitos</div><div class="value">{k_obt}</div><div class="sub">Mort./egresos {k_m_eg} · Mort./adm {k_m_ad}</div></div>']
+    lines += [f'<div class="kpi"><div class="label">Vent. invasiva</div><div class="value">{k_vi}</div></div>']
+    lines += [f'<div class="kpi"><div class="label">LOS mediana</div><div class="value">{k_los_med} d</div><div class="sub">{k_los_iqr} · media {k_los_mean}</div></div>']
+    lines += [f'<div class="kpi"><div class="label">APACHE II 24 h</div><div class="value">{k_ap_med}</div><div class="sub">{k_ap_iqr}</div></div>']
+    lines += [f'<div class="kpi"><div class="label">SOFA 48 h</div><div class="value">{k_sf_med}</div><div class="sub">{k_sf_iqr}</div></div>']
+    lines += [f'<div class="kpi"><div class="label">Dispositivos/100 adm</div><div class="value">{k_cvc} CVC</div><div class="sub">HD {k_hd} · Líneas {k_la} · ECG/pt {k_ecg}</div></div>']
+    lines += ['</div>']  # kpi-grid
+
+    # Gráficos: dinámica
+    lines += ['<h2 id="dinamica-asistencial">Dinámica asistencial</h2>']
+    lines += ['<div class="grid-2">']
+    lines += ['<div class="card"><figure><img src="assets/timeseries_adm_disc.png" alt="Admisiones y egresos"><figcaption>Admisiones y egresos diarios</figcaption></figure></div>']
+    lines += ['<div class="card"><figure><img src="assets/census_daily.png" alt="Censo diario"><figcaption>Censo diario UCI</figcaption></figure></div>']
+    lines += ['</div>']
+
+    # Severidad y estancia
+    lines += ['<h2 id="severidad-y-estancia">Severidad y estancia</h2>']
+    lines += ['<div class="grid-2">']
     if (ASSETS_DIR / "los_hist.png").exists():
-        lines += ["![Distribución LOS](assets/los_hist.png)", ""]
+        lines += ['<div class="card"><figure><img src="assets/los_hist.png" alt="Distribución LOS"><figcaption>Distribución de LOS (días)</figcaption></figure></div>']
     if (ASSETS_DIR / "apache_box.png").exists():
-        lines += ["![APACHE II (24 h)](assets/apache_box.png)", ""]
+        lines += ['<div class="card"><figure><img src="assets/apache_box.png" alt="APACHE II"><figcaption>APACHE II a 24 h</figcaption></figure></div>']
     if (ASSETS_DIR / "sofa_box.png").exists():
-        lines += ["![SOFA a 48 h](assets/sofa_box.png)", ""]
-    lines += ["## Vigilancia microbiológica", ""]
+        lines += ['<div class="card"><figure><img src="assets/sofa_box.png" alt="SOFA 48 h"><figcaption>SOFA a 48 h</figcaption></figure></div>']
+    lines += ['</div>']
+
+    # Vigilancia
+    lines += ['<h2 id="vigilancia-microbiologica">Vigilancia microbiológica</h2>']
     if (ASSETS_DIR / "kpc_bars.png").exists():
-        lines += ["![KPC/MBL](assets/kpc_bars.png)", ""]
-    lines += ["## Casuística (Top)", ""]
+        lines += ['<div class="card"><figure><img src="assets/kpc_bars.png" alt="KPC/MBL"><figcaption>Distribución por estado KPC/MBL</figcaption></figure></div>']
+
+    # Casuística Top + tablas
+    lines += ['<h2 id="casuistica-top">Casuística (Top)</h2>']
     if (ASSETS_DIR / "casemix_bars.png").exists():
-        lines += ["![Origen del paciente](assets/casemix_bars.png)", ""]
-    lines += ["### Por médico tratante", md_table(tables["por_medico"].reset_index().rename(columns={"medico":"Médico"}), index=False), ""]
-    lines += ["### Por origen del paciente (Top 10)", md_table(tables["por_origen"].reset_index().rename(columns={"origen":"Origen"}), index=False), ""]
-    lines += ["### Por tipo de paciente (Top 10)", md_table(tables["por_tipo"].reset_index().rename(columns={"tipo":"Tipo"}), index=False), ""]
-    lines += ["### KPC/MBL", md_table(tables["kpc"].reset_index(), index=False), ""]
-    lines += ["> **Notas:** Tasas no ajustadas por gravedad. Interpretar mortalidad por médico con cautela (case-mix).", ""]
+        lines += ['<div class="card"><figure><img src="assets/casemix_bars.png" alt="Origen Top"><figcaption>Pacientes por origen (Top 8)</figcaption></figure></div>']
+
+    # Tablas: por médico / origen / tipo / KPC
+    # Formateo final (porcentajes a 1 dec, LOS a 1 dec)
+    def _format_table(df: pd.DataFrame, perc_cols=("Mort.%",), dec_cols=("LOS_med", "APACHE_med", "SOFA48_med")) -> pd.DataFrame:
+        out = df.copy()
+        for c in out.columns:
+            if c in perc_cols:
+                out[c] = out[c].astype(float).round(1).map(lambda v: fmt_pct(v))
+            elif c in dec_cols and c in out:
+                out[c] = out[c].astype(float).round(1).map(lambda v: fmt_float(v))
+            elif pd.api.types.is_integer_dtype(out[c]) or pd.api.types.is_float_dtype(out[c]):
+                out[c] = out[c].map(fmt_int)
+        return out
+
+    tab_med = _format_table(tables["por_medico"].reset_index().rename(columns={"medico":"Médico"}))
+    tab_org = _format_table(tables["por_origen"].reset_index().rename(columns={"origen":"Origen"}), dec_cols=("LOS_med",))
+    tab_tip = _format_table(tables["por_tipo"].reset_index().rename(columns={"tipo":"Tipo"}), dec_cols=("LOS_med",))
+    tab_kpc = tables["kpc"].reset_index().copy()
+    if "Pacientes" in tab_kpc.columns:
+        tab_kpc["Pacientes"] = tab_kpc["Pacientes"].map(fmt_int)
+
+    lines += ['<h3>Por médico tratante</h3>','<div class="tablewrap">', md_table(tab_med, index=False), '</div>']
+    lines += ['<h3>Por origen del paciente (Top 10)</h3>','<div class="tablewrap">', md_table(tab_org, index=False), '</div>']
+    lines += ['<h3>Por tipo de paciente (Top 10)</h3>','<div class="tablewrap">', md_table(tab_tip, index=False), '</div>']
+    lines += ['<h3>KPC/MBL</h3>','<div class="tablewrap">', md_table(tab_kpc, index=False), '</div>']
+
+    # Nota metodológica
+    lines += [f'<div class="note"><strong>Notas metodológicas:</strong> Mortalidad sin ajuste por gravedad ni case-mix. '
+              f'El indicador “Mort./egresos” usa el número de egresos como denominador. LOS recalculado cuando faltan días en la hoja.</div>']
+
+    lines += ['</div>']  # fin .page
+
     (REPORT_DIR / "index.md").write_text("\n".join(lines), encoding="utf-8")
 
 # =========================
@@ -426,7 +594,7 @@ def write_markdown(kpis: dict, tables: dict):
 def main():
     df_raw = load_data()
     df = prepare(df_raw)
-    ts, census = timeseries_and_census(df)
+    timeseries_and_census(df)
     distribution_plots(df)
     bar_plots(df)
     kpis = compute_kpis(df)
