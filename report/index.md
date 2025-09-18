@@ -7,7 +7,7 @@ layout: null
 
 <div class="page">
 <h1>Informe Operativo UCI</h1>
-<div class="badgebar"><span class="badge">Actualizado: 2025-09-18 23:27 UTC</span><span class="badge">Período: 2024-08-16 → 2025-09-12</span></div>
+<div class="badgebar"><span class="badge">Actualizado: 2025-09-18 23:41 UTC</span><span class="badge">Período: 2024-08-16 → 2025-09-12</span></div>
 <div class="toc">
 <a href="#resumen-ejecutivo">Resumen</a>
 <a href="#dinamica-asistencial">Dinámica</a>
