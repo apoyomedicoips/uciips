@@ -2,7 +2,7 @@ name: Build UCI report
 
 on:
   schedule:
-    - cron: "*/30 * * * *"   # cada 30 min
+    - cron: "*/30 * * * *"   # cada 30 minutos
   workflow_dispatch: {}
 
 permissions:
@@ -25,18 +25,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Build report
+      - name: Build report (CSV público)
         env:
           SHEET_CSV_URL: "https://docs.google.com/spreadsheets/d/1LCSYbJp5s8YafQFwRjBZ1pGP82zoIjy-RVxD-o3gn3w/gviz/tq?tqx=out:csv&sheet=base"
-          WRITE_TO_DOCS_INDEX: "true"   # genera docs/index.md (útil si tienes GitHub Pages)
-        run: |
-          python scripts/uci_build_report.py
+        run: python scripts/uci_build_report.py
 
       - name: Commit & push
         run: |
           git config user.name "uci-bot"
           git config user.email "uci-bot@users.noreply.github.com"
-          git add reports/ docs/ || true
-          git commit -m "chore(report): auto-update UCI report [skip ci]" || exit 0
+          git add report/ || true
+          git commit -m "chore(report): auto-update /report [skip ci]" || exit 0
           git push
-
