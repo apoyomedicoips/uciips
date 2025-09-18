@@ -4,19 +4,47 @@
   <meta charset="utf-8">
   <title>Registro UCI · IPS</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,follow">
   <style>
-    html,body{height:100%;margin:0}
-    .wrap{height:100%;display:flex;flex-direction:column}
-    header{padding:10px 14px;background:#0f172a;color:#e2e8f0;font-weight:700}
-    .frame{flex:1; border:0;}
-    .hint{padding:8px 14px; background:#f1f5f9; color:#0f172a; font-size:.9rem}
+    html, body { height: 100%; margin: 0; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif; background:#0f172a; color:#e2e8f0; }
+    header { padding: 12px 16px; background:#0b1220; border-bottom:1px solid #1f2937; display:flex; gap:12px; align-items:center; }
+    header img { height: 28px; width: auto; }
+    header h1 { font-size: 1rem; margin: 0; font-weight: 700; letter-spacing:.2px; }
+    .hint { padding: 8px 16px; background:#111827; color:#cbd5e1; font-size:.9rem; border-bottom:1px solid #1f2937; }
+    .wrap { height: calc(100% - 82px); } /* header (48) + hint (34) */
+    iframe { width: 100%; height: 100%; border: 0; background:#fff; }
+    .fallback { padding: 14px 16px; }
+    .btn { display:inline-block; padding:10px 14px; border-radius:10px; background:#22c55e; color:#0f172a; text-decoration:none; font-weight:700; }
+    .btn:focus, .btn:hover { filter: brightness(1.05); }
   </style>
 </head>
 <body>
+  <header>
+    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="#22c55e" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M8 1a7 7 0 1 0 6.938 6.09.5.5 0 0 0-.812-.39A5.5 5.5 0 1 1 8 2.5a.5.5 0 0 0 0-1.5z"/>
+      <path d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 1 0-.896.444A4 4 0 1 1 8 4a.5.5 0 0 0 0-1z"/>
+    </svg>
+    <h1>Registro UCI · IPS</h1>
+  </header>
+
+  <div class="hint">
+    Este sitio embebe el formulario operativo publicado como Google Apps Script. Si el iFrame no carga, utilice el enlace directo.
+  </div>
+
   <div class="wrap">
-    <header>Registro UCI · IPS</header>
-    <div class="hint">Si no carga, verifique conectividad o permisos del Web App de Google.</div>
-    <iframe class="frame" src="https://script.google.com/macros/s/AKfycbwP2Ppa_f4yxQRugAnlPvXxKW_NhcqBzeulpt0E0LQW3GYtg1ZRGpFXmWON4y-OPaqNFw/exec" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe>
+    <iframe
+      src="https://script.google.com/macros/s/AKfycbwP2Ppa_f4yxQRugAnlPvXxKW_NhcqBzeulpt0E0LQW3GYtg1ZRGpFXmWON4y-OPaqNFw/exec"
+      referrerpolicy="no-referrer-when-downgrade"
+      allowfullscreen
+      loading="eager">
+    </iframe>
+    <noscript>
+      <div class="fallback">
+        <p>Para usar el formulario necesita habilitar JavaScript.</p>
+        <p><a class="btn" href="https://script.google.com/macros/s/AKfycbwP2Ppa_f4yxQRugAnlPvXxKW_NhcqBzeulpt0E0LQW3GYtg1ZRGpFXmWON4y-OPaqNFw/exec" target="_blank" rel="noopener">Abrir formulario</a></p>
+      </div>
+    </noscript>
   </div>
 </body>
 </html>
