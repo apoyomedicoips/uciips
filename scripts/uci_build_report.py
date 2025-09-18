@@ -3,10 +3,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import base64, json, unicodedata
-from datetime import datetime
+from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 
 # =========================
 # Rutas
@@ -24,6 +23,7 @@ SHEET_CSV_URL = os.getenv("SHEET_CSV_URL", "").strip()
 GSHEETS_CREDENTIALS_B64 = os.getenv("GSHEETS_CREDENTIALS_B64", "").strip()
 GSHEET_ID = os.getenv("GSHEET_ID", "").strip()
 GSHEET_TAB = os.getenv("GSHEET_TAB", "base")
+TIMEZONE = os.getenv("TZ", "UTC")
 
 # =========================
 # Utilidades
@@ -49,8 +49,8 @@ def parse_date_series(sr: pd.Series) -> pd.Series:
 
 def to_bool(sr: pd.Series) -> pd.Series:
     s = sr.astype(str).str.strip().str.lower()
-    si = {"si","sí","yes","y","1","true","verdadero"}
-    no = {"no","n","0","false","falso"}
+    si = {"si", "sí", "yes", "y", "1", "true", "verdadero"}
+    no = {"no", "n", "0", "false", "falso"}
     out = pd.Series(pd.NA, index=sr.index, dtype="boolean")
     out = out.mask(s.isin(si), True).mask(s.isin(no), False)
     return out
@@ -58,44 +58,8 @@ def to_bool(sr: pd.Series) -> pd.Series:
 def to_int(sr: pd.Series) -> pd.Series:
     return pd.to_numeric(sr, errors="coerce").astype("Int64")
 
-def median_iqr(x: pd.Series):
-    x = pd.to_numeric(x, errors="coerce").dropna()
-    if x.empty:
-        return None, None, None
-    return float(x.median()), float(x.quantile(0.25)), float(x.quantile(0.75))
-
 def safe_pct(num, den) -> float:
     return float(num)/float(den)*100.0 if den else 0.0
-
-def fmt_int(x) -> str:
-    if x is None or (isinstance(x, float) and (np.isnan(x))):
-        return "0"
-    try:
-        return f"{int(round(float(x))):,}".replace(",", ".")
-    except Exception:
-        return str(x)
-
-def fmt_pct(x, nd=1) -> str:
-    if x is None or (isinstance(x, float) and (np.isnan(x))):
-        return "0.0%"
-    return f"{float(x):.{nd}f}%"
-
-def fmt_float(x, nd=1) -> str:
-    if x is None or (isinstance(x, float) and (np.isnan(x))):
-        return f"{0:.{nd}f}"
-    return f"{float(x):.{nd}f}"
-
-def md_table(df: pd.DataFrame, index=False) -> str:
-    # Formatea a Markdown; el CSS aplicará estilo
-    try:
-        return df.to_markdown(index=index)
-    except Exception:
-        cols = list(df.columns)
-        rows = ["| " + " | ".join(map(str, cols)) + " |",
-                "|" + "|".join("---" for _ in cols) + "|"]
-        for _, r in df.iterrows():
-            rows.append("| " + " | ".join("" if pd.isna(v) else str(v) for v in r.tolist()) + " |")
-        return "\n".join(rows)
 
 # =========================
 # Carga de datos
@@ -163,7 +127,7 @@ def canon_outcome(x: str) -> str:
     if not isinstance(x, str):
         return ""
     t = _accent_fold(x).lower().strip().rstrip(":")
-    if "obito" in t:
+    if "obito" in t or "óbito" in t:
         return "Óbito"
     if "alta" in t:
         return "Alta a piso"
@@ -175,7 +139,7 @@ def canon_kpc(x: str) -> str:
     t = _accent_fold(x).lower()
     if "negativo" in t:
         return "Negativo"
-    if "pendiente retorno" in t:
+    if "pendiente retorno" in t or "pendiente hr" in t:
         return "Pendiente HR ingreso"
     if "prevalencia" in t:
         return "HR de Prevalencia"
@@ -203,12 +167,12 @@ def prepare(df_raw: pd.DataFrame) -> pd.DataFrame:
         if col in df.columns:
             df[col] = parse_date_series(df[col])
 
-    # Números
+    # Numéricos
     for col in ["edad","apache2","sofa48","vvc","cateter_hd","lineas_art","ecg","los","reg_intern","prontuario"]:
         if col in df.columns:
             df[col] = to_int(df[col])
 
-    # Booleans
+    # Booleanos
     for col in ["vi","tubo_dren","traqueo","caf","pocus","doppler_tc","fibro"]:
         if col in df.columns:
             df[col] = to_bool(df[col])
@@ -236,357 +200,438 @@ def prepare(df_raw: pd.DataFrame) -> pd.DataFrame:
     return df
 
 # =========================
-# Figuras
+# Export JSON para el tablero
 # =========================
-def timeseries_and_census(df: pd.DataFrame):
-    # Ajustes de estilo gráfico (sobrios)
-    plt.rcParams["figure.dpi"] = 150
-    plt.rcParams["figure.figsize"] = (9, 4)
+def export_json(df: pd.DataFrame, path: Path):
+    def to_iso(d):
+        if pd.isna(d):
+            return None
+        return pd.to_datetime(d).date().isoformat()
 
-    adm = df.groupby(df["fec_ing"].dt.date).size().rename("Admisiones").to_frame()
-    dis = df[df["fec_egr"].notna()].groupby(df["fec_egr"].dt.date).size().rename("Egresos").to_frame()
+    def yesno(x):
+        if pd.isna(x):
+            return ""
+        return "Sí" if bool(x) else "No"
 
-    start = df["fec_ing"].min()
-    if df["fec_egr"].notna().any():
-        start = min(start, df["fec_egr"].min())
-    end = df["fec_ing"].max()
-    if df["fec_egr"].notna().any():
-        end = max(end, df["fec_egr"].max())
-    idx = pd.date_range(start, end, freq="D").date
+    records = []
+    cols = ["fec_ing","fec_egr","medico","origen","tipo","cond_egreso","kpc_mbl",
+            "vi","los_final","apache2","sofa48"]
+    for _, r in df[cols].iterrows():
+        records.append({
+            "fec_ing": to_iso(r["fec_ing"]),
+            "fec_egr": to_iso(r["fec_egr"]),
+            "medico": (r["medico"] or "").strip(),
+            "origen": (r["origen"] or "").strip(),
+            "tipo": (r["tipo"] or "").strip(),
+            "cond_egreso": (r["cond_egreso"] or "").strip(),
+            "kpc": (r["kpc_mbl"] or "").strip(),
+            "vi": yesno(r["vi"]),
+            "los": None if pd.isna(r["los_final"]) else int(r["los_final"]),
+            "apache2": None if pd.isna(r["apache2"]) else int(r["apache2"]),
+            "sofa48": None if pd.isna(r["sofa48"]) else int(r["sofa48"]),
+        })
 
-    ts = pd.DataFrame(index=idx)
-    ts["Admisiones"] = adm.reindex(idx).fillna(0).astype(int)
-    ts["Egresos"] = dis.reindex(idx).fillna(0).astype(int)
-
-    census = pd.Series(0, index=pd.Index(idx, name="Fecha"), dtype=int)
-    for _, r in df.iterrows():
-        d0 = r["fec_ing"].date()
-        d1 = (r["fec_egr"].date() if pd.notna(r["fec_egr"]) else r["fec_ing"].date())
-        for d in pd.date_range(d0, d1, freq="D").date:
-            if d in census.index:
-                census.loc[d] = int(census.loc[d]) + 1
-
-    fig1 = plt.figure()
-    ax = plt.gca()
-    ts.plot(ax=ax)
-    ax.set_title("Admisiones y Egresos diarios")
-    ax.set_xlabel("Fecha"); ax.set_ylabel("Conteo")
-    ax.grid(True, axis="y", alpha=.3)
-    plt.tight_layout(); plt.savefig(ASSETS_DIR / "timeseries_adm_disc.png"); plt.close(fig1)
-
-    fig2 = plt.figure()
-    ax2 = plt.gca()
-    census.plot(ax=ax2)
-    ax2.set_title("Censo diario UCI (pacientes presentes)")
-    ax2.set_xlabel("Fecha"); ax2.set_ylabel("Pacientes")
-    ax2.grid(True, axis="y", alpha=.3)
-    plt.tight_layout(); plt.savefig(ASSETS_DIR / "census_daily.png"); plt.close(fig2)
-
-    return ts, census
-
-def distribution_plots(df: pd.DataFrame):
-    plt.rcParams["figure.figsize"] = (8, 4)
-
-    los = pd.to_numeric(df["los_final"], errors="coerce").dropna()
-    if not los.empty:
-        fig = plt.figure()
-        ax = plt.gca()
-        bins = range(0, int(max(1, los.max())) + 2)
-        ax.hist(los, bins=bins)
-        ax.set_title("Distribución de LOS (días)"); ax.set_xlabel("Días"); ax.set_ylabel("Pacientes")
-        ax.grid(True, axis="y", alpha=.3)
-        plt.tight_layout(); plt.savefig(ASSETS_DIR / "los_hist.png"); plt.close(fig)
-
-    ap = pd.to_numeric(df["apache2"], errors="coerce").dropna()
-    if not ap.empty:
-        fig = plt.figure()
-        ax = plt.gca()
-        ax.boxplot(ap, vert=True, labels=["APACHE II (24 h)"])
-        ax.set_title("APACHE II (24 h)"); ax.set_ylabel("Puntaje")
-        ax.grid(True, axis="y", alpha=.3)
-        plt.tight_layout(); plt.savefig(ASSETS_DIR / "apache_box.png"); plt.close(fig)
-
-    so = pd.to_numeric(df["sofa48"], errors="coerce").dropna()
-    if not so.empty:
-        fig = plt.figure()
-        ax = plt.gca()
-        ax.boxplot(so, vert=True, labels=["SOFA 48 h"])
-        ax.set_title("SOFA a 48 h"); ax.set_ylabel("Puntaje")
-        ax.grid(True, axis="y", alpha=.3)
-        plt.tight_layout(); plt.savefig(ASSETS_DIR / "sofa_box.png"); plt.close(fig)
-
-def bar_plots(df: pd.DataFrame):
-    plt.rcParams["figure.figsize"] = (8, 4)
-
-    k = df["kpc_mbl"].fillna("").replace("", "No informado").value_counts().sort_values(ascending=False)
-    if not k.empty:
-        fig = plt.figure()
-        ax = plt.gca()
-        k.plot(kind="bar", ax=ax)
-        ax.set_title("Estado KPC/MBL"); ax.set_ylabel("Pacientes")
-        ax.grid(True, axis="y", alpha=.3)
-        plt.tight_layout(); plt.savefig(ASSETS_DIR / "kpc_bars.png"); plt.close(fig)
-
-    o = df["origen"].fillna("No informado").value_counts().head(8)
-    if not o.empty:
-        fig = plt.figure()
-        ax = plt.gca()
-        o.plot(kind="bar", ax=ax)
-        ax.set_title("Casos por origen (Top 8)"); ax.set_ylabel("Pacientes")
-        ax.grid(True, axis="y", alpha=.3)
-        plt.tight_layout(); plt.savefig(ASSETS_DIR / "casemix_bars.png"); plt.close(fig)
-
-# =========================
-# KPIs y tablas
-# =========================
-def compute_kpis(df: pd.DataFrame) -> dict:
-    n = len(df)
-    egresos = df["fec_egr"].notna().sum()
-    obitos = (df["cond_egreso"] == "Óbito").sum()
-    mort_egresos = safe_pct(obitos, egresos)
-    mort_admisiones = safe_pct(obitos, n)
-
-    los = pd.to_numeric(df["los_final"], errors="coerce")
-    los_med, los_q1, los_q3 = median_iqr(los)
-    los_mean = float(los.mean()) if los.notna().any() else None
-
-    ap_med, ap_q1, ap_q3 = median_iqr(df["apache2"])
-    so_med, so_q1, so_q3 = median_iqr(df["sofa48"])
-
-    vi_rate = to_bool(df["vi"]).mean(skipna=True) if "vi" in df else np.nan
-    vi_rate = float(vi_rate * 100) if pd.notna(vi_rate) else None
-
-    vvc_per100 = safe_pct(df["vvc"].fillna(0).sum(), n)
-    hd_per100 = safe_pct(df["cateter_hd"].fillna(0).sum(), n)
-    la_per100 = safe_pct(df["lineas_art"].fillna(0).sum(), n)
-    ecg_prom_pt = float(df["ecg"].fillna(0).sum()) / n if n else 0.0
-
-    periodo_ini = df["fec_ing"].min()
-    periodo_fin = df["fec_egr"].max() if df["fec_egr"].notna().any() else df["fec_ing"].max()
-
-    return {
-        "admisiones": n,
-        "egresos": int(egresos),
-        "obitos": int(obitos),
-        "mort_sobre_egresos": mort_egresos,
-        "mort_sobre_admisiones": mort_admisiones,
-        "los_mediana": los_med, "los_q1": los_q1, "los_q3": los_q3, "los_media": los_mean,
-        "apache_med": ap_med, "apache_q1": ap_q1, "apache_q3": ap_q3,
-        "sofa_med": so_med, "sofa_q1": so_q1, "sofa_q3": so_q3,
-        "vi_rate": vi_rate,
-        "vvc_per100": vvc_per100, "hd_per100": hd_per100, "la_per100": la_per100,
-        "ecg_prom_pt": ecg_prom_pt,
-        "periodo_ini": periodo_ini, "periodo_fin": periodo_fin
+    payload = {
+        "updated": datetime.utcnow().strftime("%Y-%m-%d %H:%M") + " UTC",
+        "timezone": TIMEZONE,
+        "n": len(records),
+        "records": records
     }
-
-def group_tables(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
-    # Por médico
-    g = df.groupby("medico", dropna=False)
-    casos_med = g.size().rename("Casos")
-    obitos_med = g["cond_egreso"].apply(lambda s: (s == "Óbito").sum()).rename("Óbitos")
-    egresos_med = g["fec_egr"].apply(lambda s: s.notna().sum())
-    mort_med = (obitos_med / egresos_med.replace(0, np.nan) * 100).rename("Mort.%")
-    los_med = g["los_final"].median().rename("LOS_med")
-    ap_med = g["apache2"].median().rename("APACHE_med")
-    so_med = g["sofa48"].median().rename("SOFA48_med")
-    tab_med = pd.concat([casos_med, obitos_med, mort_med, los_med, ap_med, so_med], axis=1)\
-                .sort_values(["Óbitos","Casos"], ascending=[False, False])
-
-    # Por origen
-    g2 = df.groupby("origen", dropna=False)
-    casos_org = g2.size().rename("Casos")
-    obitos_org = g2["cond_egreso"].apply(lambda s: (s == "Óbito").sum()).rename("Óbitos")
-    egresos_org = g2["fec_egr"].apply(lambda s: s.notna().sum())
-    mort_org = (obitos_org / egresos_org.replace(0, np.nan) * 100).rename("Mort.%")
-    los_org = g2["los_final"].median().rename("LOS_med")
-    tab_origen = pd.concat([casos_org, obitos_org, mort_org, los_org], axis=1)\
-                   .sort_values("Casos", ascending=False).head(10)
-
-    # Por tipo
-    g3 = df.groupby("tipo", dropna=False)
-    casos_tipo = g3.size().rename("Casos")
-    obitos_tipo = g3["cond_egreso"].apply(lambda s: (s == "Óbito").sum()).rename("Óbitos")
-    egresos_tipo = g3["fec_egr"].apply(lambda s: s.notna().sum())
-    mort_tipo = (obitos_tipo / egresos_tipo.replace(0, np.nan) * 100).rename("Mort.%")
-    los_tipo = g3["los_final"].median().rename("LOS_med")
-    tab_tipo = pd.concat([casos_tipo, obitos_tipo, mort_tipo, los_tipo], axis=1)\
-                 .sort_values("Casos", ascending=False).head(10)
-
-    # KPC/MBL
-    tab_kpc = df["kpc_mbl"].fillna("No informado").value_counts().rename_axis("Estado").to_frame("Pacientes")
-
-    # Redondeos y formateos de columnas numéricas
-    for t in [tab_med, tab_origen, tab_tipo]:
-        if "Mort.%" in t.columns:
-            t["Mort.%"] = t["Mort.%"].astype(float).round(1)
-        if "LOS_med" in t.columns:
-            t["LOS_med"] = t["LOS_med"].astype(float).round(1)
-
-    return {"por_medico": tab_med, "por_origen": tab_origen, "por_tipo": tab_tipo, "kpc": tab_kpc}
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
 # =========================
-# CSS y render Markdown
+# HTML (Plotly) para el tablero
 # =========================
-CSS_CONTENT = """
-:root{
-  --bg:#0b1220; --panel:#0f172a; --ink:#e5e7eb; --muted:#9ca3af; --accent:#22c55e;
-  --border:#1f2937; --accent2:#38bdf8; --warn:#f59e0b;
+HTML = r"""<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>UCI · Tablero interactivo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://cdn.plot.ly/plotly-2.33.0.min.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+:root{ --primary:#0ea5e9; --secondary:#8b5cf6; --txt:#e5e7eb; --muted:#93a4b8 }
+html,body{height:100%}
+body{
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Noto Sans', Helvetica, Arial, sans-serif;
+  background: radial-gradient(1200px 600px at 20% -10%, #1f3b68 0%, #0b1020 55%, #0b0f18 100%);
+  color:var(--txt);
 }
-*{box-sizing:border-box}
-html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,Helvetica Neue,Arial}
-.page{max-width:1120px;margin:0 auto;padding:32px 20px}
-h1,h2,h3{color:#fff;letter-spacing:.1px}
-h1{font-size:32px;margin:0 0 6px}
-h2{font-size:22px;margin:28px 0 12px;border-bottom:1px solid var(--border);padding-bottom:6px}
-h3{font-size:18px;margin:22px 0 10px}
-.badgebar{display:flex;gap:12px;flex-wrap:wrap;margin:8px 0 18px}
-.badge{background:var(--panel);border:1px solid var(--border);padding:6px 10px;border-radius:999px;color:var(--muted)}
-.kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:12px 0 8px}
-.kpi{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px 16px}
-.kpi .label{color:var(--muted);font-size:.85rem;margin-bottom:6px}
-.kpi .value{font-size:1.6rem;font-weight:700;color:#fff}
-.kpi .sub{color:var(--muted);font-size:.85rem;margin-top:6px}
-.grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-.card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:12px}
-figure{margin:0}
-figure img{width:100%;display:block;border-radius:10px;border:1px solid var(--border)}
-figcaption{color:var(--muted);font-size:.85rem;margin-top:6px}
-.tablewrap{overflow:auto;border:1px solid var(--border);border-radius:12px}
-table{width:100%;border-collapse:collapse;background:var(--panel)}
-th,td{padding:10px 12px;border-bottom:1px solid var(--border);text-align:left}
-thead th{position:sticky;top:0;background:#0e162a;color:#e2e8f0}
-tbody tr:nth-child(odd){background:#0d1526}
-.note{border-left:4px solid var(--accent2);padding:10px 12px;background:#0d1625;border-radius:8px;margin-top:8px;color:#cde1ff}
-.toc{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px}
-.toc a{color:var(--accent2);text-decoration:none;border:1px solid var(--border);border-radius:999px;padding:6px 10px}
-@media (max-width:960px){
-  .kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .grid-2{grid-template-columns:1fr}
+.hdr{background:linear-gradient(135deg,var(--primary),var(--secondary));color:#fff;border-radius:16px;padding:16px 18px;margin:12px 0;
+display:flex;align-items:center;justify-content:space-between;gap:16px}
+.glass{background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.02));backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.08);border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+.card-kpi{ padding:12px 14px;border-radius:14px;display:flex;gap:12px;align-items:center }
+.k-val{ font-size:1.35rem; font-weight:800 }
+.k-lbl{ color:#c6d0e0; font-size:.9rem }
+.btn-clear{ color:#fff; border-color: rgba(255,255,255,.45)}
+.btn-clear:hover{ background: rgba(255,255,255,.1)}
+.ctrl .form-select,.ctrl .form-control{ background: rgba(255,255,255,.92) }
+.badge-filter{ background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.25)}
+.empty{ border:1px dashed rgba(255,255,255,.35); border-radius:12px; padding:16px; color:#cfe3ff; background:rgba(255,255,255,.04) }
+a,a:hover{color:#9ecbff}
+</style>
+</head>
+<body>
+<div class="container py-3">
+
+  <div class="hdr">
+    <div>
+      <h1 class="h5 m-0">UCI · Tablero interactivo</h1>
+      <div class="small opacity-75">Filtra con controles o haciendo clic en barras/sectores • doble clic para quitar zoom local.</div>
+    </div>
+    <div class="text-end">
+      <div id="updated" class="small">Actualizado: —</div>
+      <button id="btnResetAll" class="btn btn-outline-light btn-sm btn-clear mt-2">Limpiar filtros</button>
+    </div>
+  </div>
+
+  <!-- Controles -->
+  <div class="glass p-3 mb-3 ctrl">
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-md-3">
+        <label class="form-label mb-1">Rango de fechas (ingreso)</label>
+        <div class="d-flex gap-2">
+          <input id="fIni" type="date" class="form-control form-control-sm">
+          <input id="fFin" type="date" class="form-control form-control-sm">
+        </div>
+        <div class="d-flex gap-1 mt-2 flex-wrap">
+          <button class="btn btn-sm btn-outline-secondary" data-quick="30">⏱️ 30 días</button>
+          <button class="btn btn-sm btn-outline-secondary" data-quick="90">90 días</button>
+          <button class="btn btn-sm btn-outline-secondary" data-quick="365">12 meses</button>
+          <button class="btn btn-sm btn-outline-secondary" data-quick="all">Todo</button>
+        </div>
+      </div>
+      <div class="col-12 col-md-3">
+        <label class="form-label mb-1">Médico tratante</label>
+        <select id="fMed" class="form-select form-select-sm"><option value="">Todos</option></select>
+      </div>
+      <div class="col-12 col-md-3">
+        <label class="form-label mb-1">Origen del paciente</label>
+        <select id="fOrg" class="form-select form-select-sm"><option value="">Todos</option></select>
+      </div>
+      <div class="col-12 col-md-3">
+        <label class="form-label mb-1">Tipo de paciente</label>
+        <select id="fTipo" class="form-select form-select-sm"><option value="">Todos</option></select>
+      </div>
+      <div class="col-12 mt-2 d-flex gap-3 align-items-center">
+        <div class="form-check">
+          <input id="fObitos" class="form-check-input" type="checkbox">
+          <label class="form-check-label">Solo Óbitos</label>
+        </div>
+        <div class="form-check">
+          <input id="fVI" class="form-check-input" type="checkbox">
+          <label class="form-check-label">Solo VI = Sí</label>
+        </div>
+        <span id="activeFilters" class="badge rounded-pill badge-filter ms-auto d-none">—</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="row g-2 mb-1">
+    <div class="col-6 col-md-3"><div class="glass card-kpi"><div>👣</div><div><div class="k-val" id="k_adm">0</div><div class="k-lbl">Admisiones</div></div></div></div>
+    <div class="col-6 col-md-3"><div class="glass card-kpi"><div>🚪</div><div><div class="k-val" id="k_egr">0</div><div class="k-lbl">Egresos</div></div></div></div>
+    <div class="col-6 col-md-3"><div class="glass card-kpi"><div>🖤</div><div><div class="k-val" id="k_ob">0</div><div class="k-lbl">Óbitos</div></div></div></div>
+    <div class="col-6 col-md-3"><div class="glass card-kpi"><div>📉</div><div><div class="k-val" id="k_mort">0%</div><div class="k-lbl">Mortalidad / egresos</div></div></div></div>
+  </div>
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-md-3"><div class="glass card-kpi"><div>🕒</div><div><div class="k-val" id="k_los_med">—</div><div class="k-lbl">LOS (mediana)</div></div></div></div>
+    <div class="col-6 col-md-3"><div class="glass card-kpi"><div>📋</div><div><div class="k-val" id="k_ap_med">—</div><div class="k-lbl">APACHE II (mediana)</div></div></div></div>
+    <div class="col-6 col-md-3"><div class="glass card-kpi"><div>❤️‍🔥</div><div><div class="k-val" id="k_sofa_med">—</div><div class="k-lbl">SOFA 48h (mediana)</div></div></div></div>
+    <div class="col-6 col-md-3"><div class="glass card-kpi"><div>🫁</div><div><div class="k-val" id="k_vi">—</div><div class="k-lbl">Vent. invasiva</div></div></div></div>
+  </div>
+
+  <div id="noData" class="empty d-none mb-3">
+    <b>No hay datos con “Fecha de Ingreso” válida.</b>
+    <div class="small">Revisa que <code>assets/data.json</code> exista y tenga registros.</div>
+  </div>
+
+  <!-- Gráficos -->
+  <div class="row g-3">
+    <div class="col-12"><div class="glass p-2"><div id="g_ts"   style="height:280px"></div></div></div>
+    <div class="col-md-4"><div class="glass p-2"><div id="g_med"  style="height:320px"></div></div></div>
+    <div class="col-md-4"><div class="glass p-2"><div id="g_org"  style="height:320px"></div></div></div>
+    <div class="col-md-4"><div class="glass p-2"><div id="g_tipo" style="height:320px"></div></div></div>
+    <div class="col-md-4"><div class="glass p-2"><div id="g_cond" style="height:300px"></div></div></div>
+    <div class="col-md-4"><div class="glass p-2"><div id="g_los"  style="height:300px"></div></div></div>
+    <div class="col-md-4"><div class="glass p-2"><div id="g_kpc"  style="height:300px"></div></div></div>
+  </div>
+
+  <div class="text-end mt-3"><a href="assets/data.json" target="_blank" rel="noreferrer">Ver JSON</a></div>
+</div>
+
+<script>
+const DATA_URL = "assets/data.json";
+const cfg = {displayModeBar:false, responsive:true};
+
+const S = {
+  dateFrom: null,
+  dateTo: null,
+  medico: "",
+  origen: "",
+  tipo: "",
+  cond: "",     // cuando se hace click en la torta
+  obitosOnly: false,
+  viOnly: false
+};
+
+let RAW = [];
+let FILTERED = [];
+
+function median(arr){
+  const v = arr.filter(x => Number.isFinite(x)).slice().sort((a,b)=>a-b);
+  if(!v.length) return null;
+  const m = Math.floor(v.length/2);
+  return v.length%2 ? v[m] : (v[m-1]+v[m])/2;
 }
+function fmtPct(x){ return x==null ? "—" : (x.toFixed(1)+"%"); }
+function setText(id, t){ const el=document.getElementById(id); if(el) el.textContent = (t==null||t==="")?"—":t; }
+
+function uniqSorted(arr){
+  return [...new Set(arr.filter(x=>x && x.trim()))].sort((a,b)=>a.localeCompare(b,'es',{sensitivity:'base'}));
+}
+
+function applyFilters(){
+  FILTERED = RAW.filter(r=>{
+    if(!r.fec_ing) return false;
+    const d = new Date(r.fec_ing+"T00:00:00Z"); // seguro UTC
+    if(S.dateFrom && d < new Date(S.dateFrom+"T00:00:00Z")) return false;
+    if(S.dateTo   && d > new Date(S.dateTo+"T00:00:00Z")) return false;
+    if(S.medico && r.medico !== S.medico) return false;
+    if(S.origen && r.origen !== S.origen) return false;
+    if(S.tipo   && r.tipo   !== S.tipo)   return false;
+    if(S.cond   && r.cond_egreso !== S.cond) return false;
+    if(S.obitosOnly && r.cond_egreso !== "Óbito") return false;
+    if(S.viOnly && r.vi !== "Sí") return false;
+    return true;
+  });
+  const badge = document.getElementById('activeFilters');
+  const parts = [];
+  if(S.dateFrom || S.dateTo){ parts.push(`Fecha: ${S.dateFrom || '…'} → ${S.dateTo || '…'}`); }
+  if(S.medico) parts.push(`Médico: ${S.medico}`);
+  if(S.origen) parts.push(`Origen: ${S.origen}`);
+  if(S.tipo)   parts.push(`Tipo: ${S.tipo}`);
+  if(S.cond)   parts.push(`Cond: ${S.cond}`);
+  if(S.obitosOnly) parts.push("Solo óbitos");
+  if(S.viOnly) parts.push("Solo VI=Sí");
+  if(parts.length){ badge.textContent = parts.join(" · "); badge.classList.remove('d-none'); }
+  else{ badge.classList.add('d-none'); }
+}
+
+function kpis(){
+  const n = FILTERED.length;
+  const eg = FILTERED.filter(d=> !!d.fec_egr).length;
+  const ob = FILTERED.filter(d=> d.cond_egreso === "Óbito").length;
+  const mort = eg ? (ob*100/eg) : 0;
+  const losArr = FILTERED.map(d=> Number.isFinite(d.los)?d.los:NaN);
+  const apArr  = FILTERED.map(d=> Number.isFinite(d.apache2)?d.apache2:NaN);
+  const soArr  = FILTERED.map(d=> Number.isFinite(d.sofa48)?d.sofa48:NaN);
+  const viPct  = n ? (FILTERED.filter(d=> d.vi==="Sí").length*100/n) : 0;
+
+  setText('k_adm', n);
+  setText('k_egr', eg);
+  setText('k_ob',  ob);
+  setText('k_mort', fmtPct(mort));
+  const mlos = median(losArr); setText('k_los_med', mlos==null?'—':mlos.toFixed(1));
+  const map = median(apArr);   setText('k_ap_med',  map==null?'—':map.toFixed(1));
+  const mso = median(soArr);   setText('k_sofa_med',mso==null?'—':mso.toFixed(1));
+  setText('k_vi', n? fmtPct(viPct) : '—');
+}
+
+function groupCount(arr, key, topN=null){
+  const m = new Map();
+  for(const r of arr){
+    const v = (r[key]||'—').trim() || '—';
+    m.set(v, (m.get(v)||0)+1);
+  }
+  let a = [...m.entries()].sort((x,y)=>y[1]-x[1]);
+  if(topN) a = a.slice(0, topN);
+  return { labels: a.map(x=>x[0]), values: a.map(x=>x[1]) };
+}
+
+function timeSeries(arr){
+  const m = new Map();
+  for(const r of arr){
+    if(!r.fec_ing) continue;
+    m.set(r.fec_ing, (m.get(r.fec_ing)||0)+1);
+  }
+  const dates = [...m.keys()].sort();
+  return { x: dates, y: dates.map(d=>m.get(d)) };
+}
+
+function buildCharts(){
+  // Serie temporal
+  const ts = timeSeries(FILTERED);
+  const layout_ts = {
+    margin:{l:40,r:10,t:10,b:30},
+    xaxis:{rangeslider:{visible:true}},
+    yaxis:{title:"Admisiones/día"},
+    paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)'
+  };
+  Plotly.react('g_ts', [{x:ts.x, y:ts.y, type:'scatter', mode:'lines+markers', fill:'tozeroy', name:'Admisiones'}], layout_ts, cfg);
+
+  // Row bars (Top 10)
+  const med = groupCount(FILTERED,'medico',10);
+  Plotly.react('g_med', [{x:med.values.reverse(), y:med.labels.slice().reverse(), type:'bar', orientation:'h', hoverinfo:'x+y'}],
+    {margin:{l:120,r:20,t:10,b:30}, xaxis:{title:'Casos'}, paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)'}, cfg);
+
+  const org = groupCount(FILTERED,'origen',10);
+  Plotly.react('g_org', [{x:org.values.reverse(), y:org.labels.slice().reverse(), type:'bar', orientation:'h'}],
+    {margin:{l:120,r:20,t:10,b:30}, xaxis:{title:'Casos'}, paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)'}, cfg);
+
+  const tip = groupCount(FILTERED,'tipo',10);
+  Plotly.react('g_tipo', [{x:tip.values.reverse(), y:tip.labels.slice().reverse(), type:'bar', orientation:'h'}],
+    {margin:{l:120,r:20,t:10,b:30}, xaxis:{title:'Casos'}, paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)'}, cfg);
+
+  // Pie Condición
+  const cond = groupCount(FILTERED,'cond_egreso');
+  Plotly.react('g_cond', [{labels:cond.labels, values:cond.values, type:'pie', hole:.45}], 
+    {margin:{l:10,r:10,t:10,b:10}, legend:{orientation:'h'}, paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)'}, cfg);
+
+  // Hist LOS
+  const los = FILTERED.map(d=> Number.isFinite(d.los)?d.los:null).filter(x=> Number.isFinite(x));
+  const maxLos = Math.max(1, ...los, 1);
+  Plotly.react('g_los', [{x:los, type:'histogram', xbins:{start:0, end:maxLos, size:1}}], 
+    {margin:{l:40,r:10,t:10,b:30}, xaxis:{title:'Días'}, yaxis:{title:'Pacientes'}, paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)'}, cfg);
+
+  // KPC
+  const kpc = groupCount(FILTERED,'kpc');
+  Plotly.react('g_kpc', [{x:kpc.values.reverse(), y:kpc.labels.slice().reverse(), type:'bar', orientation:'h'}],
+    {margin:{l:120,r:20,t:10,b:30}, xaxis:{title:'Pacientes'}, paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)'}, cfg);
+}
+
+function refreshAll(){
+  applyFilters();
+  document.getElementById('noData').classList.toggle('d-none', FILTERED.length>0);
+  kpis();
+  buildCharts();
+}
+
+function setSelectOptions(selId, values){
+  const sel = document.getElementById(selId);
+  const keep = sel.value;
+  sel.innerHTML = '<option value="">Todos</option>' + values.map(v=>`<option>${v}</option>`).join('');
+  if(values.includes(keep)) sel.value = keep;
+}
+
+function attachInteractions(){
+  // Clic en barras -> selecciona filtro
+  document.getElementById('g_med').on('plotly_click', (ev)=>{
+    const label = ev.points?.[0]?.y; if(!label) return;
+    document.getElementById('fMed').value = label; S.medico = label; refreshAll();
+  });
+  document.getElementById('g_org').on('plotly_click', (ev)=>{
+    const label = ev.points?.[0]?.y; if(!label) return;
+    document.getElementById('fOrg').value = label; S.origen = label; refreshAll();
+  });
+  document.getElementById('g_tipo').on('plotly_click', (ev)=>{
+    const label = ev.points?.[0]?.y; if(!label) return;
+    document.getElementById('fTipo').value = label; S.tipo = label; refreshAll();
+  });
+  document.getElementById('g_cond').on('plotly_click', (ev)=>{
+    const label = ev.points?.[0]?.label; if(!label) return;
+    // toggle cond
+    S.cond = (S.cond===label) ? "" : label;
+    refreshAll();
+  });
+
+  // Range temporal desde relayout (zoom/brush)
+  document.getElementById('g_ts').on('plotly_relayout', (ev)=>{
+    const a = ev['xaxis.range[0]'] || ev['xaxis.range[0]'] || ev['xaxis.range']?.[0];
+    const b = ev['xaxis.range[1]'] || ev['xaxis.range[1]'] || ev['xaxis.range']?.[1];
+    if(a && b){
+      S.dateFrom = a.slice(0,10);
+      S.dateTo   = b.slice(0,10);
+      document.getElementById('fIni').value = S.dateFrom;
+      document.getElementById('fFin').value = S.dateTo;
+      refreshAll();
+    }
+  });
+
+  // Controles
+  document.getElementById('fMed').addEventListener('change', e=>{ S.medico = e.target.value; refreshAll(); });
+  document.getElementById('fOrg').addEventListener('change', e=>{ S.origen = e.target.value; refreshAll(); });
+  document.getElementById('fTipo').addEventListener('change', e=>{ S.tipo   = e.target.value; refreshAll(); });
+  document.getElementById('fObitos').addEventListener('change', e=>{ S.obitosOnly = e.target.checked; refreshAll(); });
+  document.getElementById('fVI').addEventListener('change', e=>{ S.viOnly = e.target.checked; refreshAll(); });
+  document.getElementById('fIni').addEventListener('change', e=>{ S.dateFrom = e.target.value || null; refreshAll(); });
+  document.getElementById('fFin').addEventListener('change', e=>{ S.dateTo   = e.target.value || null; refreshAll(); });
+
+  document.querySelectorAll('[data-quick]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const q = btn.getAttribute('data-quick');
+      if(q==='all'){ S.dateFrom=null; S.dateTo=null; document.getElementById('fIni').value=''; document.getElementById('fFin').value=''; }
+      else{
+        const maxd = RAW.map(r=>r.fec_ing).sort().pop();
+        const from = new Date(maxd); from.setDate(from.getDate()-parseInt(q,10));
+        S.dateFrom = from.toISOString().slice(0,10);
+        S.dateTo   = maxd;
+        document.getElementById('fIni').value=S.dateFrom;
+        document.getElementById('fFin').value=S.dateTo;
+      }
+      refreshAll();
+    });
+  });
+
+  document.getElementById('btnResetAll').addEventListener('click', ()=>{
+    S.dateFrom = S.dateTo = null;
+    S.medico = S.origen = S.tipo = S.cond = "";
+    S.obitosOnly = S.viOnly = false;
+    document.getElementById('fIni').value='';
+    document.getElementById('fFin').value='';
+    document.getElementById('fMed').value='';
+    document.getElementById('fOrg').value='';
+    document.getElementById('fTipo').value='';
+    document.getElementById('fObitos').checked=false;
+    document.getElementById('fVI').checked=false;
+    refreshAll();
+  });
+}
+
+function bootstrap(){
+  fetch(DATA_URL).then(r=>r.json()).then(payload=>{
+    RAW = payload.records || [];
+    document.getElementById('updated').textContent = "Actualizado: "+(payload.updated||"—");
+    if(!RAW.length){
+      document.getElementById('noData').classList.remove('d-none');
+      return;
+    }
+    // opciones en selects
+    setSelectOptions('fMed',  uniqSorted(RAW.map(r=>r.medico)));
+    setSelectOptions('fOrg',  uniqSorted(RAW.map(r=>r.origen)));
+    setSelectOptions('fTipo', uniqSorted(RAW.map(r=>r.tipo)));
+    // rango por defecto: últimos 180 días si aplica
+    const dates = uniqSorted(RAW.map(r=>r.fec_ing));
+    if(dates.length){
+      const maxd = dates[dates.length-1];
+      const from = new Date(maxd); from.setDate(from.getDate()-180);
+      S.dateFrom = from.toISOString().slice(0,10);
+      S.dateTo   = maxd;
+      document.getElementById('fIni').value = S.dateFrom;
+      document.getElementById('fFin').value = S.dateTo;
+    }
+    attachInteractions();
+    refreshAll();
+  }).catch(err=>{
+    console.error(err);
+    document.getElementById('noData').classList.remove('d-none');
+  });
+}
+bootstrap();
+</script>
+</body>
+</html>
 """
 
-def fmt_dt(d) -> str:
-    if d is None or pd.isna(d):
-        return "-"
-    return pd.to_datetime(d).strftime("%Y-%m-%d")
+def write_plotly_html():
+    (REPORT_DIR / "index.html").write_text(HTML, encoding="utf-8")
 
-def write_css():
-    (ASSETS_DIR / "report.css").write_text(CSS_CONTENT, encoding="utf-8")
-
-def write_markdown(kpis: dict, tables: dict):
-    # Asegura CSS
-    write_css()
-
-    # KPIs formateados
-    k_adm = fmt_int(kpis['admisiones'])
-    k_egr = fmt_int(kpis['egresos'])
-    k_obt = fmt_int(kpis['obitos'])
-    k_m_eg = fmt_pct(kpis['mort_sobre_egresos'])
-    k_m_ad = fmt_pct(kpis['mort_sobre_admisiones'])
-    k_los_med = fmt_float(kpis['los_mediana'])
-    k_los_iqr = f"Q1 {fmt_float(kpis['los_q1'])} – Q3 {fmt_float(kpis['los_q3'])}"
-    k_los_mean = fmt_float(kpis['los_media'])
-    k_ap_med = fmt_float(kpis['apache_med'])
-    k_ap_iqr = f"Q1 {fmt_float(kpis['apache_q1'])} – Q3 {fmt_float(kpis['apache_q3'])}"
-    k_sf_med = fmt_float(kpis['sofa_med'])
-    k_sf_iqr = f"Q1 {fmt_float(kpis['sofa_q1'])} – Q3 {fmt_float(kpis['sofa_q3'])}"
-    k_vi = fmt_pct(kpis['vi_rate'])
-    k_cvc = fmt_float(kpis['vvc_per100'])
-    k_hd = fmt_float(kpis['hd_per100'])
-    k_la = fmt_float(kpis['la_per100'])
-    k_ecg = fmt_float(kpis['ecg_prom_pt'], nd=2)
-
-    lines = []
-    # Front matter para Jekyll
-    lines += ["---", "title: Informe Operativo UCI", "layout: null", "---", ""]
-    # Enlace a CSS (desde contenido, funciona en Pages)
-    lines += ['<link rel="stylesheet" href="assets/report.css">', '']
-    lines += ['<div class="page">']
-    lines += [f'<h1>Informe Operativo UCI</h1>']
-    lines += [f'<div class="badgebar"><span class="badge">Actualizado: {datetime.utcnow().strftime("%Y-%m-%d %H:%M")} UTC</span><span class="badge">Período: {fmt_dt(kpis["periodo_ini"])} → {fmt_dt(kpis["periodo_fin"])}</span></div>']
-
-    # TOC
-    lines += ['<div class="toc">']
-    lines += ['<a href="#resumen-ejecutivo">Resumen</a>',
-              '<a href="#dinamica-asistencial">Dinámica</a>',
-              '<a href="#severidad-y-estancia">Severidad</a>',
-              '<a href="#vigilancia-microbiologica">KPC/MBL</a>',
-              '<a href="#casuistica-top">Casuística</a>']
-    lines += ['</div>']
-
-    # KPIs en tarjetas
-    lines += ['<h2 id="resumen-ejecutivo">Resumen ejecutivo</h2>']
-    lines += ['<div class="kpi-grid">']
-    lines += [f'<div class="kpi"><div class="label">Admisiones</div><div class="value">{k_adm}</div></div>']
-    lines += [f'<div class="kpi"><div class="label">Egresos</div><div class="value">{k_egr}</div></div>']
-    lines += [f'<div class="kpi"><div class="label">Óbitos</div><div class="value">{k_obt}</div><div class="sub">Mort./egresos {k_m_eg} · Mort./adm {k_m_ad}</div></div>']
-    lines += [f'<div class="kpi"><div class="label">Vent. invasiva</div><div class="value">{k_vi}</div></div>']
-    lines += [f'<div class="kpi"><div class="label">LOS mediana</div><div class="value">{k_los_med} d</div><div class="sub">{k_los_iqr} · media {k_los_mean}</div></div>']
-    lines += [f'<div class="kpi"><div class="label">APACHE II 24 h</div><div class="value">{k_ap_med}</div><div class="sub">{k_ap_iqr}</div></div>']
-    lines += [f'<div class="kpi"><div class="label">SOFA 48 h</div><div class="value">{k_sf_med}</div><div class="sub">{k_sf_iqr}</div></div>']
-    lines += [f'<div class="kpi"><div class="label">Dispositivos/100 adm</div><div class="value">{k_cvc} CVC</div><div class="sub">HD {k_hd} · Líneas {k_la} · ECG/pt {k_ecg}</div></div>']
-    lines += ['</div>']  # kpi-grid
-
-    # Gráficos: dinámica
-    lines += ['<h2 id="dinamica-asistencial">Dinámica asistencial</h2>']
-    lines += ['<div class="grid-2">']
-    lines += ['<div class="card"><figure><img src="assets/timeseries_adm_disc.png" alt="Admisiones y egresos"><figcaption>Admisiones y egresos diarios</figcaption></figure></div>']
-    lines += ['<div class="card"><figure><img src="assets/census_daily.png" alt="Censo diario"><figcaption>Censo diario UCI</figcaption></figure></div>']
-    lines += ['</div>']
-
-    # Severidad y estancia
-    lines += ['<h2 id="severidad-y-estancia">Severidad y estancia</h2>']
-    lines += ['<div class="grid-2">']
-    if (ASSETS_DIR / "los_hist.png").exists():
-        lines += ['<div class="card"><figure><img src="assets/los_hist.png" alt="Distribución LOS"><figcaption>Distribución de LOS (días)</figcaption></figure></div>']
-    if (ASSETS_DIR / "apache_box.png").exists():
-        lines += ['<div class="card"><figure><img src="assets/apache_box.png" alt="APACHE II"><figcaption>APACHE II a 24 h</figcaption></figure></div>']
-    if (ASSETS_DIR / "sofa_box.png").exists():
-        lines += ['<div class="card"><figure><img src="assets/sofa_box.png" alt="SOFA 48 h"><figcaption>SOFA a 48 h</figcaption></figure></div>']
-    lines += ['</div>']
-
-    # Vigilancia
-    lines += ['<h2 id="vigilancia-microbiologica">Vigilancia microbiológica</h2>']
-    if (ASSETS_DIR / "kpc_bars.png").exists():
-        lines += ['<div class="card"><figure><img src="assets/kpc_bars.png" alt="KPC/MBL"><figcaption>Distribución por estado KPC/MBL</figcaption></figure></div>']
-
-    # Casuística Top + tablas
-    lines += ['<h2 id="casuistica-top">Casuística (Top)</h2>']
-    if (ASSETS_DIR / "casemix_bars.png").exists():
-        lines += ['<div class="card"><figure><img src="assets/casemix_bars.png" alt="Origen Top"><figcaption>Pacientes por origen (Top 8)</figcaption></figure></div>']
-
-    # Tablas: por médico / origen / tipo / KPC
-    # Formateo final (porcentajes a 1 dec, LOS a 1 dec)
-    def _format_table(df: pd.DataFrame, perc_cols=("Mort.%",), dec_cols=("LOS_med", "APACHE_med", "SOFA48_med")) -> pd.DataFrame:
-        out = df.copy()
-        for c in out.columns:
-            if c in perc_cols:
-                out[c] = out[c].astype(float).round(1).map(lambda v: fmt_pct(v))
-            elif c in dec_cols and c in out:
-                out[c] = out[c].astype(float).round(1).map(lambda v: fmt_float(v))
-            elif pd.api.types.is_integer_dtype(out[c]) or pd.api.types.is_float_dtype(out[c]):
-                out[c] = out[c].map(fmt_int)
-        return out
-
-    tab_med = _format_table(tables["por_medico"].reset_index().rename(columns={"medico":"Médico"}))
-    tab_org = _format_table(tables["por_origen"].reset_index().rename(columns={"origen":"Origen"}), dec_cols=("LOS_med",))
-    tab_tip = _format_table(tables["por_tipo"].reset_index().rename(columns={"tipo":"Tipo"}), dec_cols=("LOS_med",))
-    tab_kpc = tables["kpc"].reset_index().copy()
-    if "Pacientes" in tab_kpc.columns:
-        tab_kpc["Pacientes"] = tab_kpc["Pacientes"].map(fmt_int)
-
-    lines += ['<h3>Por médico tratante</h3>','<div class="tablewrap">', md_table(tab_med, index=False), '</div>']
-    lines += ['<h3>Por origen del paciente (Top 10)</h3>','<div class="tablewrap">', md_table(tab_org, index=False), '</div>']
-    lines += ['<h3>Por tipo de paciente (Top 10)</h3>','<div class="tablewrap">', md_table(tab_tip, index=False), '</div>']
-    lines += ['<h3>KPC/MBL</h3>','<div class="tablewrap">', md_table(tab_kpc, index=False), '</div>']
-
-    # Nota metodológica
-    lines += [f'<div class="note"><strong>Notas metodológicas:</strong> Mortalidad sin ajuste por gravedad ni case-mix. '
-              f'El indicador “Mort./egresos” usa el número de egresos como denominador. LOS recalculado cuando faltan días en la hoja.</div>']
-
-    lines += ['</div>']  # fin .page
-
-    (REPORT_DIR / "index.md").write_text("\n".join(lines), encoding="utf-8")
+# =========================
+# (Opcional) Informe estático (si quieres mantenerlo)
+# =========================
+# Puedes dejar tus funciones de PNG/Markdown aquí si las necesitas,
+# o comentar su uso para tener solo el tablero interactivo.
 
 # =========================
 # Main
@@ -594,12 +639,23 @@ def write_markdown(kpis: dict, tables: dict):
 def main():
     df_raw = load_data()
     df = prepare(df_raw)
-    timeseries_and_census(df)
-    distribution_plots(df)
-    bar_plots(df)
-    kpis = compute_kpis(df)
-    tables = group_tables(df)
-    write_markdown(kpis, tables)
+
+    # 1) JSON para el tablero
+    export_json(df, ASSETS_DIR / "data.json")
+
+    # 2) HTML interactivo Plotly
+    write_plotly_html()
+
+    # 3) (Opcional) Si quieres seguir generando el informe estático con PNGs y markdown,
+    #    llama aquí a tus funciones existentes (coméntalas si no las necesitas):
+    #
+    # from math import isnan
+    # timeseries_and_census(df)
+    # distribution_plots(df)
+    # bar_plots(df)
+    # kpis = compute_kpis(df)
+    # tables = group_tables(df)
+    # write_markdown(kpis, tables)
 
 if __name__ == "__main__":
     main()
