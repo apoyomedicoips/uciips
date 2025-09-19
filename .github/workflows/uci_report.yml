@@ -2,7 +2,7 @@ name: Build UCI report
 
 on:
   schedule:
-    - cron: "*/120 * * * *"   # cada 30 minutos
+    - cron: "0 */2 * * *"  # Cada 2 horas
   workflow_dispatch: {}
 
 permissions:
@@ -11,6 +11,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -20,20 +21,20 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install deps
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Build report (CSV público)
+      - name: Build data.json desde hoja Google
         env:
           SHEET_CSV_URL: "https://docs.google.com/spreadsheets/d/1LCSYbJp5s8YafQFwRjBZ1pGP82zoIjy-RVxD-o3gn3w/gviz/tq?tqx=out:csv&sheet=base"
         run: python scripts/uci_build_report.py
 
-      - name: Commit & push
+      - name: Commit & Push
         run: |
           git config user.name "uci-bot"
           git config user.email "uci-bot@users.noreply.github.com"
-          git add report/ || true
+          git add report/assets/data.json || true
           git commit -m "chore(report): auto-update /report [skip ci]" || exit 0
-          git push
+          git push origin main
