@@ -45,5 +45,165 @@
       </div>
     </noscript>
   </div>
+
+
+  <script>
+// ---------- Loader robusto con no-cache + tolerancia de formatos ----------
+function unifyPayload(p) {
+  // 1) { updated, records: [...] }
+  if (p && Array.isArray(p.records)) return p.records;
+
+  // 2) Array de objetos
+  if (Array.isArray(p) && p.length && typeof p[0] === 'object' && !Array.isArray(p[0])) return p;
+
+  // 3) Tabla: [ [headers...], [row...], ... ]
+  if (Array.isArray(p) && p.length && Array.isArray(p[0])) {
+    const headers = p[0].map(h => String(h).trim());
+    return p.slice(1).map(row => Object.fromEntries(headers.map((h,i)=>[h, row[i]])));
+  }
+
+  // 4) { data:[rows], columns:[headers] }
+  if (p && Array.isArray(p.data) && Array.isArray(p.columns)) {
+    const hdr = p.columns.map(h => String(h).trim());
+    return p.data.map(row => Object.fromEntries(hdr.map((h,i)=>[h, row[i]])));
+  }
+
+  return [];
+}
+
+// Asegura que Plotly esté disponible (si usas Plotly). Si usas dc.js, omite esto.
+function ensurePlotly(cb){
+  if (window.Plotly) return cb();
+  const s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js';
+  s.onload = cb;
+  document.head.appendChild(s);
+}
+
+async function fetchDataJSON() {
+  // cache-busting + no-store
+  const url = new URL('assets/data.json', location.href).href + '?v=' + Date.now();
+  const res = await fetch(url, { cache: 'no-store' });
+  if (!res.ok) throw new Error('No se pudo leer data.json (' + res.status + ')');
+  return res.json();
+}
+
+// Utilidades mínimas que usa el render (si no las tienes ya)
+function setText(id, val){ const el = document.getElementById(id); if (el) el.textContent = (val ?? '—'); }
+function showNoData(show){ const el = document.getElementById('noData'); if (el) el.classList.toggle('d-none', !show); }
+
+// Normalizadores básicos (si no los tienes ya)
+function toISODate(s){
+  if (!s && s!==0) return null;
+  if (s instanceof Date && !isNaN(+s)) return s.toISOString().slice(0,10);
+  const str = String(s).trim();
+  if (!str) return null;
+  if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.slice(0,10);
+  const m = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (m) {
+    let d=+m[1], M=+m[2], y=+m[3]; if (y<100) y = y>=30 ? 1900+y : 2000+y;
+    const pad=n=>String(n).padStart(2,'0');
+    return `${y}-${pad(M)}-${pad(d)}`;
+  }
+  const d = new Date(str);
+  return isNaN(+d) ? null : d.toISOString().slice(0,10);
+}
+
+const FIELD_KEYS = {
+  fec_ing: ['fec_ing','Fecha de Ingreso','fechaIngreso','fecha_ingreso','fecIngreso'],
+  fec_egr: ['fec_egr','Fecha de Egreso','fechaEgreso','fecha_egreso','fecEgreso'],
+  medico:  ['medico','Médico Tratante','medico_tratante','Medico Tratante'],
+  origen:  ['origen','Origen del Paciente','origen_paciente'],
+  tipo:    ['tipo','Tipos de Pacientes','tipo_paciente'],
+  cond:    ['cond_egreso','Condición al Egreso','condicion_egreso'],
+  kpc:     ['kpc','kpc_mbl','KPC/MBL POSITIVO EN PACIENTES'],
+  vi:      ['vi','Ventilación Invasiva','ventilacion_invasiva'],
+  los:     ['los','los_final','Días de Internación','los_calc'],
+  apache2: ['apache2','APACHE II a las 24 h del ingreso','apache'],
+  sofa48:  ['sofa48','SOFA a las 48 h del ingreso','sofa']
+};
+function firstKey(obj, arr){ for(const k of arr){ if (Object.hasOwn(obj,k) && obj[k]!=null && obj[k]!=='') return obj[k]; } return null; }
+function yesNo(v){
+  if (v===true) return 'Sí'; if (v===false) return 'No';
+  const s=String(v??'').trim().toLowerCase();
+  if (['si','sí','s','1','true','verdadero'].includes(s)) return 'Sí';
+  if (['no','n','0','false','falso'].includes(s)) return 'No';
+  return '';
+}
+function toInt(v){ const n=Number(v); return Number.isFinite(n) ? Math.trunc(n) : null; }
+
+function normalizeRecord(r){
+  return {
+    fec_ing: toISODate(firstKey(r, FIELD_KEYS.fec_ing)),
+    fec_egr: toISODate(firstKey(r, FIELD_KEYS.fec_egr)),
+    medico:  String(firstKey(r, FIELD_KEYS.medico) || '').trim(),
+    origen:  String(firstKey(r, FIELD_KEYS.origen) || '').trim(),
+    tipo:    String(firstKey(r, FIELD_KEYS.tipo)   || '').trim(),
+    cond_egreso: String(firstKey(r, FIELD_KEYS.cond) || '').trim().replace(/\s*:\s*$/,''),
+    kpc:     String(firstKey(r, FIELD_KEYS.kpc) || '').trim(),
+    vi:      yesNo(firstKey(r, FIELD_KEYS.vi)),
+    los:     toInt(firstKey(r, FIELD_KEYS.los)),
+    apache2: toInt(firstKey(r, FIELD_KEYS.apache2)),
+    sofa48:  toInt(firstKey(r, FIELD_KEYS.sofa48))
+  };
+}
+
+// Estado global mínimo
+let RAW=[], FILTERED=[];
+const S = { dateFrom:null, dateTo:null, medico:'', origen:'', tipo:'', cond:'', obitosOnly:false, viOnly:false };
+
+function applyFilters(){
+  FILTERED = RAW.filter(r=>{
+    if(!r.fec_ing) return false;
+    const d = new Date(r.fec_ing+'T00:00:00Z');
+    if (S.dateFrom && d < new Date(S.dateFrom+'T00:00:00Z')) return false;
+    if (S.dateTo   && d > new Date(S.dateTo  +'T00:00:00Z')) return false;
+    if (S.medico && r.medico !== S.medico) return false;
+    if (S.origen && r.origen !== S.origen) return false;
+    if (S.tipo   && r.tipo   !== S.tipo)   return false;
+    if (S.cond   && r.cond_egreso !== S.cond) return false;
+    if (S.obitosOnly && r.cond_egreso !== 'Óbito') return false;
+    if (S.viOnly && r.vi !== 'Sí') return false;
+    return true;
+  });
+}
+
+// Boot: carga, normaliza y dispara tu pipeline de render
+async function boot(){
+  try{
+    const payload = await fetchDataJSON();
+    const recs = unifyPayload(payload);
+    console.log('JSON bruto:', payload);
+    console.log('Registros entrantes:', recs.length, recs[0]);
+
+    RAW = recs.map(normalizeRecord);
+    const withDate = RAW.filter(r=>r.fec_ing).length;
+
+    // “Actualizado” (si tu JSON trae `updated`, úsalo)
+    const updated = payload && payload.updated ? payload.updated : new Date().toISOString().slice(0,16).replace('T',' ');
+    setText('updated', `Actualizado: ${updated}`);
+
+    applyFilters();
+    showNoData(withDate === 0);
+    if (withDate === 0) return;
+
+    // Llama aquí a tus funciones existentes:
+    // 1) KPIs
+    if (typeof kpis === 'function') kpis();
+    // 2) Graficar (Plotly o dc.js, según tu implementación)
+    if (typeof buildCharts === 'function') buildCharts();
+    // 3) Interacciones
+    if (typeof attachInteractions === 'function') attachInteractions();
+
+  } catch (e) {
+    console.error(e);
+    alert('No se pudo cargar assets/data.json. Revisa la consola para más detalles.');
+  }
+}
+
+ensurePlotly(boot); // si usas dc.js, simplemente llama boot();
+</script>
+
+  
 </body>
 </html>
