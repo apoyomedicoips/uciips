@@ -1,56 +1,45 @@
 # scripts/uci_build_report.py
 from __future__ import annotations
-import os
+import os, json, base64, unicodedata
 from pathlib import Path
-import base64, json, unicodedata
-from datetime import datetime, timedelta
+from datetime import datetime
 import numpy as np
 import pandas as pd
 
-# =========================
-# Rutas
-# =========================
 ROOT = Path(__file__).resolve().parent.parent
 REPORT_DIR = ROOT / "report"
 ASSETS_DIR = REPORT_DIR / "assets"
 REPORT_DIR.mkdir(parents=True, exist_ok=True)
 ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 
-# =========================
-# Config vía entorno
-# =========================
 SHEET_CSV_URL = os.getenv("SHEET_CSV_URL", "").strip()
 GSHEETS_CREDENTIALS_B64 = os.getenv("GSHEETS_CREDENTIALS_B64", "").strip()
 GSHEET_ID = os.getenv("GSHEET_ID", "").strip()
 GSHEET_TAB = os.getenv("GSHEET_TAB", "base")
 TIMEZONE = os.getenv("TZ", "UTC")
 
-# =========================
-# Utilidades
-# =========================
+# ---------- util ----------
 def _accent_fold(s: str) -> str:
     if s is None:
         return ""
     return "".join(c for c in unicodedata.normalize("NFKD", str(s)) if not unicodedata.combining(c))
 
 def parse_date_series(sr: pd.Series) -> pd.Series:
-    s = sr.astype(str).str.strip().replace({"": pd.NA, "NaT": pd.NA, "nan": pd.NA})
+    s = sr.astype(str).str.replace("\u00A0", " ").str.strip().replace({"": pd.NA, "NaT": pd.NA, "nan": pd.NA})
     dt = pd.to_datetime(s, dayfirst=True, errors="coerce")
     def _fix(y):
         if pd.isna(y):
             return pd.NaT
         if 1000 <= y.year <= 1100:
-            try:
-                return y.replace(year=y.year + 1000)
-            except Exception:
-                return y
+            try: return y.replace(year=y.year + 1000)
+            except Exception: return y
         return y
     return dt.apply(_fix)
 
 def to_bool(sr: pd.Series) -> pd.Series:
     s = sr.astype(str).str.strip().str.lower()
-    si = {"si", "sí", "yes", "y", "1", "true", "verdadero"}
-    no = {"no", "n", "0", "false", "falso"}
+    si = {"si","sí","yes","y","1","true","verdadero"}
+    no = {"no","n","0","false","falso"}
     out = pd.Series(pd.NA, index=sr.index, dtype="boolean")
     out = out.mask(s.isin(si), True).mask(s.isin(no), False)
     return out
@@ -58,15 +47,10 @@ def to_bool(sr: pd.Series) -> pd.Series:
 def to_int(sr: pd.Series) -> pd.Series:
     return pd.to_numeric(sr, errors="coerce").astype("Int64")
 
-def safe_pct(num, den) -> float:
-    return float(num)/float(den)*100.0 if den else 0.0
-
-# =========================
-# Carga de datos
-# =========================
+# ---------- load ----------
 def load_from_csv_url(url: str) -> pd.DataFrame:
     if not url:
-        raise RuntimeError("SHEET_CSV_URL vacío. Defínelo en el workflow.")
+        raise RuntimeError("SHEET_CSV_URL vacío.")
     return pd.read_csv(url, dtype=str)
 
 def load_from_gsheets_service_account(b64_json: str, sheet_id: str, tab: str="base") -> pd.DataFrame:
@@ -86,11 +70,9 @@ def load_data() -> pd.DataFrame:
         return load_from_csv_url(SHEET_CSV_URL)
     if GSHEETS_CREDENTIALS_B64 and GSHEET_ID:
         return load_from_gsheets_service_account(GSHEETS_CREDENTIALS_B64, GSHEET_ID, GSHEET_TAB)
-    raise RuntimeError("Configura SHEET_CSV_URL o variables de Service Account.")
+    raise RuntimeError("Configura SHEET_CSV_URL o las variables de Service Account.")
 
-# =========================
-# Normalización
-# =========================
+# ---------- normalize ----------
 COLMAP = {
   'Marca temporal':'marca_temporal',
   'Dirección de correo electrónico':'email',
@@ -124,98 +106,59 @@ COLMAP = {
 }
 
 def canon_outcome(x: str) -> str:
-    if not isinstance(x, str):
-        return ""
+    if not isinstance(x, str): return ""
     t = _accent_fold(x).lower().strip().rstrip(":")
-    if "obito" in t or "óbito" in t:
-        return "Óbito"
-    if "alta" in t:
-        return "Alta a piso"
+    if "obito" in t or "óbito" in t: return "Óbito"
+    if "alta" in t: return "Alta a piso"
     return x.strip().rstrip(":")
 
 def canon_kpc(x: str) -> str:
-    if not isinstance(x, str):
-        return ""
+    if not isinstance(x, str): return ""
     t = _accent_fold(x).lower()
-    if "negativo" in t:
-        return "Negativo"
-    if "pendiente retorno" in t or "pendiente hr" in t:
-        return "Pendiente HR ingreso"
-    if "prevalencia" in t:
-        return "HR de Prevalencia"
-    if "ingreso" in t:
-        return "HR de Ingreso"
-    if "portador" in t or "plasmido" in t or "mdr" in t:
-        return "Conocido portador MDR"
+    if "negativo" in t: return "Negativo"
+    if "pendiente retorno" in t or "pendiente hr" in t: return "Pendiente HR ingreso"
+    if "prevalencia" in t: return "HR de Prevalencia"
+    if "ingreso" in t: return "HR de Ingreso"
+    if "portador" in t or "plasmido" in t or "mdr" in t: return "Conocido portador MDR"
     return x
 
 def canon_servicio(x: str) -> str:
-    if not isinstance(x, str):
-        return ""
+    if not isinstance(x, str): return ""
     t = _accent_fold(x).strip()
-    repl = {
-        "Traumatologia":"Traumatología", "Urologia":"Urología", "Mastologia":"Mastología",
-        "IPS INTERIOR":"IPS Interior", "Reanimacion":"Reanimación", "Clinica Medica":"Clínica Médica"
-    }
+    repl = {"Traumatologia":"Traumatología","Urologia":"Urología","Mastologia":"Mastología",
+            "IPS INTERIOR":"IPS Interior","Reanimacion":"Reanimación","Clinica Medica":"Clínica Médica"}
     return repl.get(t, x)
 
 def prepare(df_raw: pd.DataFrame) -> pd.DataFrame:
     df = df_raw.rename(columns=COLMAP).copy()
-
-    # Fechas
     for col in ["marca_temporal","fec_nac","fec_ing","fec_egr"]:
-        if col in df.columns:
-            df[col] = parse_date_series(df[col])
-
-    # Numéricos
+        if col in df: df[col] = parse_date_series(df[col])
     for col in ["edad","apache2","sofa48","vvc","cateter_hd","lineas_art","ecg","los","reg_intern","prontuario"]:
-        if col in df.columns:
-            df[col] = to_int(df[col])
-
-    # Booleanos
+        if col in df: df[col] = to_int(df[col])
     for col in ["vi","tubo_dren","traqueo","caf","pocus","doppler_tc","fibro"]:
-        if col in df.columns:
-            df[col] = to_bool(df[col])
-
-    # Canon
-    if "cond_egreso" in df.columns:
-        df["cond_egreso"] = df["cond_egreso"].astype(str).map(canon_outcome)
-    if "kpc_mbl" in df.columns:
-        df["kpc_mbl"] = df["kpc_mbl"].astype(str).map(canon_kpc)
-    if "origen" in df.columns:
-        df["origen"] = df["origen"].astype(str).map(canon_servicio)
-    if "tipo" in df.columns:
-        df["tipo"] = df["tipo"].astype(str).str.strip()
-    if "medico" in df.columns:
-        df["medico"] = df["medico"].astype(str).str.strip()
-
-    # Recalcular LOS si hace falta
-    if "fec_ing" in df.columns and "fec_egr" in df.columns:
+        if col in df: df[col] = to_bool(df[col])
+    if "cond_egreso" in df: df["cond_egreso"] = df["cond_egreso"].astype(str).map(canon_outcome)
+    if "kpc_mbl" in df: df["kpc_mbl"] = df["kpc_mbl"].astype(str).map(canon_kpc)
+    if "origen" in df: df["origen"] = df["origen"].astype(str).map(canon_servicio)
+    if "tipo" in df: df["tipo"] = df["tipo"].astype(str).str.strip()
+    if "medico" in df: df["medico"] = df["medico"].astype(str).str.strip()
+    if "fec_ing" in df and "fec_egr" in df:
         los_calc = (df["fec_egr"] - df["fec_ing"]).dt.days
         df["los_calc"] = los_calc.where(los_calc >= 0)
     df["los_final"] = df.get("los").fillna(df.get("los_calc"))
-
-    # Filtrar sin fecha de ingreso
     df = df[df["fec_ing"].notna()].copy()
     return df
 
-# =========================
-# Export JSON para el tablero
-# =========================
-def export_json(df: pd.DataFrame, path: Path):
+# ---------- payload (JSON) ----------
+def export_payload(df: pd.DataFrame) -> dict:
     def to_iso(d):
-        if pd.isna(d):
-            return None
+        if pd.isna(d): return None
         return pd.to_datetime(d).date().isoformat()
-
     def yesno(x):
-        if pd.isna(x):
-            return ""
+        if pd.isna(x): return ""
         return "Sí" if bool(x) else "No"
-
     records = []
-    cols = ["fec_ing","fec_egr","medico","origen","tipo","cond_egreso","kpc_mbl",
-            "vi","los_final","apache2","sofa48"]
+    cols = ["fec_ing","fec_egr","medico","origen","tipo","cond_egreso","kpc_mbl","vi","los_final","apache2","sofa48"]
     for _, r in df[cols].iterrows():
         records.append({
             "fec_ing": to_iso(r["fec_ing"]),
@@ -230,19 +173,18 @@ def export_json(df: pd.DataFrame, path: Path):
             "apache2": None if pd.isna(r["apache2"]) else int(r["apache2"]),
             "sofa48": None if pd.isna(r["sofa48"]) else int(r["sofa48"]),
         })
-
     payload = {
         "updated": datetime.utcnow().strftime("%Y-%m-%d %H:%M") + " UTC",
         "timezone": TIMEZONE,
         "n": len(records),
         "records": records
     }
-    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    # Guardamos para diagnóstico (puede fallar si .gitignore bloquea, pero no afecta el tablero)
+    (ASSETS_DIR / "data.json").write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    return payload
 
-# =========================
-# HTML (Plotly) para el tablero
-# =========================
-HTML = r"""<!doctype html>
+# ---------- HTML ----------
+HTML_TMPL = r"""<!doctype html>
 <html lang="es">
 <head>
 <meta charset="utf-8">
@@ -278,7 +220,7 @@ a,a:hover{color:#9ecbff}
   <div class="hdr">
     <div>
       <h1 class="h5 m-0">UCI · Tablero interactivo</h1>
-      <div class="small opacity-75">Filtra con controles o haciendo clic en barras/sectores • doble clic para quitar zoom local.</div>
+      <div class="small opacity-75">Filtra con controles o clic en barras/sectores • doble clic para quitar zoom local.</div>
     </div>
     <div class="text-end">
       <div id="updated" class="small">Actualizado: —</div>
@@ -286,7 +228,6 @@ a,a:hover{color:#9ecbff}
     </div>
   </div>
 
-  <!-- Controles -->
   <div class="glass p-3 mb-3 ctrl">
     <div class="row g-2 align-items-end">
       <div class="col-12 col-md-3">
@@ -315,20 +256,13 @@ a,a:hover{color:#9ecbff}
         <select id="fTipo" class="form-select form-select-sm"><option value="">Todos</option></select>
       </div>
       <div class="col-12 mt-2 d-flex gap-3 align-items-center">
-        <div class="form-check">
-          <input id="fObitos" class="form-check-input" type="checkbox">
-          <label class="form-check-label">Solo Óbitos</label>
-        </div>
-        <div class="form-check">
-          <input id="fVI" class="form-check-input" type="checkbox">
-          <label class="form-check-label">Solo VI = Sí</label>
-        </div>
+        <div class="form-check"><input id="fObitos" class="form-check-input" type="checkbox"><label class="form-check-label">Solo Óbitos</label></div>
+        <div class="form-check"><input id="fVI" class="form-check-input" type="checkbox"><label class="form-check-label">Solo VI = Sí</label></div>
         <span id="activeFilters" class="badge rounded-pill badge-filter ms-auto d-none">—</span>
       </div>
     </div>
   </div>
 
-  <!-- KPIs -->
   <div class="row g-2 mb-1">
     <div class="col-6 col-md-3"><div class="glass card-kpi"><div>👣</div><div><div class="k-val" id="k_adm">0</div><div class="k-lbl">Admisiones</div></div></div></div>
     <div class="col-6 col-md-3"><div class="glass card-kpi"><div>🚪</div><div><div class="k-val" id="k_egr">0</div><div class="k-lbl">Egresos</div></div></div></div>
@@ -342,12 +276,8 @@ a,a:hover{color:#9ecbff}
     <div class="col-6 col-md-3"><div class="glass card-kpi"><div>🫁</div><div><div class="k-val" id="k_vi">—</div><div class="k-lbl">Vent. invasiva</div></div></div></div>
   </div>
 
-  <div id="noData" class="empty d-none mb-3">
-    <b>No hay datos con “Fecha de Ingreso” válida.</b>
-    <div class="small">Revisa que <code>assets/data.json</code> exista y tenga registros.</div>
-  </div>
+  <div id="noData" class="empty d-none mb-3"><b>No hay datos con “Fecha de Ingreso” válida.</b><div class="small">Revisa que <code>assets/data.json</code> exista y tenga registros.</div></div>
 
-  <!-- Gráficos -->
   <div class="row g-3">
     <div class="col-12"><div class="glass p-2"><div id="g_ts"   style="height:280px"></div></div></div>
     <div class="col-md-4"><div class="glass p-2"><div id="g_med"  style="height:320px"></div></div></div>
@@ -361,41 +291,23 @@ a,a:hover{color:#9ecbff}
   <div class="text-end mt-3"><a href="assets/data.json" target="_blank" rel="noreferrer">Ver JSON</a></div>
 </div>
 
+<!-- DATA EMBEBIDA -->
+<script type="application/json" id="PAYLOAD">__PAYLOAD_JSON__</script>
+
 <script>
-const DATA_URL = "assets/data.json";
 const cfg = {displayModeBar:false, responsive:true};
+let RAW = []; let FILTERED = [];
+const S = {dateFrom:null,dateTo:null,medico:"",origen:"",tipo:"",cond:"",obitosOnly:false,viOnly:false};
 
-const S = {
-  dateFrom: null,
-  dateTo: null,
-  medico: "",
-  origen: "",
-  tipo: "",
-  cond: "",     // cuando se hace click en la torta
-  obitosOnly: false,
-  viOnly: false
-};
-
-let RAW = [];
-let FILTERED = [];
-
-function median(arr){
-  const v = arr.filter(x => Number.isFinite(x)).slice().sort((a,b)=>a-b);
-  if(!v.length) return null;
-  const m = Math.floor(v.length/2);
-  return v.length%2 ? v[m] : (v[m-1]+v[m])/2;
-}
+function median(arr){ const v=arr.filter(x=>Number.isFinite(x)).slice().sort((a,b)=>a-b); if(!v.length) return null; const m=Math.floor(v.length/2); return v.length%2?v[m]:(v[m-1]+v[m])/2;}
 function fmtPct(x){ return x==null ? "—" : (x.toFixed(1)+"%"); }
-function setText(id, t){ const el=document.getElementById(id); if(el) el.textContent = (t==null||t==="")?"—":t; }
-
-function uniqSorted(arr){
-  return [...new Set(arr.filter(x=>x && x.trim()))].sort((a,b)=>a.localeCompare(b,'es',{sensitivity:'base'}));
-}
+function setText(id,t){ const el=document.getElementById(id); if(el) el.textContent=(t==null||t==="")?"—":t; }
+function uniqSorted(arr){ return [...new Set(arr.filter(x=>x&&x.trim()))].sort((a,b)=>a.localeCompare(b,'es',{sensitivity:'base'}));}
 
 function applyFilters(){
   FILTERED = RAW.filter(r=>{
     if(!r.fec_ing) return false;
-    const d = new Date(r.fec_ing+"T00:00:00Z"); // seguro UTC
+    const d = new Date(r.fec_ing+"T00:00:00Z");
     if(S.dateFrom && d < new Date(S.dateFrom+"T00:00:00Z")) return false;
     if(S.dateTo   && d > new Date(S.dateTo+"T00:00:00Z")) return false;
     if(S.medico && r.medico !== S.medico) return false;
@@ -406,217 +318,143 @@ function applyFilters(){
     if(S.viOnly && r.vi !== "Sí") return false;
     return true;
   });
-  const badge = document.getElementById('activeFilters');
-  const parts = [];
-  if(S.dateFrom || S.dateTo){ parts.push(`Fecha: ${S.dateFrom || '…'} → ${S.dateTo || '…'}`); }
+  const badge = document.getElementById('activeFilters'); const parts=[];
+  if(S.dateFrom||S.dateTo) parts.push(`Fecha: ${S.dateFrom||'…'} → ${S.dateTo||'…'}`);
   if(S.medico) parts.push(`Médico: ${S.medico}`);
   if(S.origen) parts.push(`Origen: ${S.origen}`);
-  if(S.tipo)   parts.push(`Tipo: ${S.tipo}`);
-  if(S.cond)   parts.push(`Cond: ${S.cond}`);
+  if(S.tipo) parts.push(`Tipo: ${S.tipo}`);
+  if(S.cond) parts.push(`Cond: ${S.cond}`);
   if(S.obitosOnly) parts.push("Solo óbitos");
   if(S.viOnly) parts.push("Solo VI=Sí");
-  if(parts.length){ badge.textContent = parts.join(" · "); badge.classList.remove('d-none'); }
-  else{ badge.classList.add('d-none'); }
+  if(parts.length){ badge.textContent=parts.join(" · "); badge.classList.remove('d-none'); } else { badge.classList.add('d-none'); }
 }
 
 function kpis(){
-  const n = FILTERED.length;
-  const eg = FILTERED.filter(d=> !!d.fec_egr).length;
-  const ob = FILTERED.filter(d=> d.cond_egreso === "Óbito").length;
-  const mort = eg ? (ob*100/eg) : 0;
-  const losArr = FILTERED.map(d=> Number.isFinite(d.los)?d.los:NaN);
-  const apArr  = FILTERED.map(d=> Number.isFinite(d.apache2)?d.apache2:NaN);
-  const soArr  = FILTERED.map(d=> Number.isFinite(d.sofa48)?d.sofa48:NaN);
-  const viPct  = n ? (FILTERED.filter(d=> d.vi==="Sí").length*100/n) : 0;
-
-  setText('k_adm', n);
-  setText('k_egr', eg);
-  setText('k_ob',  ob);
-  setText('k_mort', fmtPct(mort));
-  const mlos = median(losArr); setText('k_los_med', mlos==null?'—':mlos.toFixed(1));
-  const map = median(apArr);   setText('k_ap_med',  map==null?'—':map.toFixed(1));
-  const mso = median(soArr);   setText('k_sofa_med',mso==null?'—':mso.toFixed(1));
-  setText('k_vi', n? fmtPct(viPct) : '—');
+  const n=FILTERED.length;
+  const eg=FILTERED.filter(d=>!!d.fec_egr).length;
+  const ob=FILTERED.filter(d=>d.cond_egreso==="Óbito").length;
+  const mort=eg?(ob*100/eg):0;
+  const losArr=FILTERED.map(d=>Number.isFinite(d.los)?d.los:NaN);
+  const apArr =FILTERED.map(d=>Number.isFinite(d.apache2)?d.apache2:NaN);
+  const soArr =FILTERED.map(d=>Number.isFinite(d.sofa48)?d.sofa48:NaN);
+  const viPct=n?(FILTERED.filter(d=>d.vi==="Sí").length*100/n):0;
+  setText('k_adm',n); setText('k_egr',eg); setText('k_ob',ob); setText('k_mort',fmtPct(mort));
+  const mlos=median(losArr); setText('k_los_med', mlos==null?'—':mlos.toFixed(1));
+  const map =median(apArr);  setText('k_ap_med',  map==null?'—':map.toFixed(1));
+  const mso =median(soArr);  setText('k_sofa_med',mso==null?'—':mso.toFixed(1));
+  setText('k_vi', n?fmtPct(viPct):'—');
 }
 
 function groupCount(arr, key, topN=null){
-  const m = new Map();
-  for(const r of arr){
-    const v = (r[key]||'—').trim() || '—';
-    m.set(v, (m.get(v)||0)+1);
-  }
-  let a = [...m.entries()].sort((x,y)=>y[1]-x[1]);
-  if(topN) a = a.slice(0, topN);
-  return { labels: a.map(x=>x[0]), values: a.map(x=>x[1]) };
+  const m=new Map(); for(const r of arr){ const v=(r[key]||'—').trim()||'—'; m.set(v,(m.get(v)||0)+1); }
+  let a=[...m.entries()].sort((x,y)=>y[1]-x[1]); if(topN) a=a.slice(0,topN);
+  return { labels:a.map(x=>x[0]), values:a.map(x=>x[1]) };
 }
-
-function timeSeries(arr){
-  const m = new Map();
-  for(const r of arr){
-    if(!r.fec_ing) continue;
-    m.set(r.fec_ing, (m.get(r.fec_ing)||0)+1);
-  }
-  const dates = [...m.keys()].sort();
-  return { x: dates, y: dates.map(d=>m.get(d)) };
-}
+function timeSeries(arr){ const m=new Map(); for(const r of arr){ if(!r.fec_ing) continue; m.set(r.fec_ing,(m.get(r.fec_ing)||0)+1); } const dates=[...m.keys()].sort(); return {x:dates,y:dates.map(d=>m.get(d))}; }
 
 function buildCharts(){
-  // Serie temporal
-  const ts = timeSeries(FILTERED);
-  const layout_ts = {
-    margin:{l:40,r:10,t:10,b:30},
-    xaxis:{rangeslider:{visible:true}},
-    yaxis:{title:"Admisiones/día"},
-    paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)'
-  };
-  Plotly.react('g_ts', [{x:ts.x, y:ts.y, type:'scatter', mode:'lines+markers', fill:'tozeroy', name:'Admisiones'}], layout_ts, cfg);
-
-  // Row bars (Top 10)
-  const med = groupCount(FILTERED,'medico',10);
-  Plotly.react('g_med', [{x:med.values.reverse(), y:med.labels.slice().reverse(), type:'bar', orientation:'h', hoverinfo:'x+y'}],
-    {margin:{l:120,r:20,t:10,b:30}, xaxis:{title:'Casos'}, paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)'}, cfg);
-
-  const org = groupCount(FILTERED,'origen',10);
-  Plotly.react('g_org', [{x:org.values.reverse(), y:org.labels.slice().reverse(), type:'bar', orientation:'h'}],
-    {margin:{l:120,r:20,t:10,b:30}, xaxis:{title:'Casos'}, paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)'}, cfg);
-
-  const tip = groupCount(FILTERED,'tipo',10);
-  Plotly.react('g_tipo', [{x:tip.values.reverse(), y:tip.labels.slice().reverse(), type:'bar', orientation:'h'}],
-    {margin:{l:120,r:20,t:10,b:30}, xaxis:{title:'Casos'}, paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)'}, cfg);
-
-  // Pie Condición
-  const cond = groupCount(FILTERED,'cond_egreso');
-  Plotly.react('g_cond', [{labels:cond.labels, values:cond.values, type:'pie', hole:.45}], 
-    {margin:{l:10,r:10,t:10,b:10}, legend:{orientation:'h'}, paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)'}, cfg);
-
-  // Hist LOS
-  const los = FILTERED.map(d=> Number.isFinite(d.los)?d.los:null).filter(x=> Number.isFinite(x));
-  const maxLos = Math.max(1, ...los, 1);
-  Plotly.react('g_los', [{x:los, type:'histogram', xbins:{start:0, end:maxLos, size:1}}], 
-    {margin:{l:40,r:10,t:10,b:30}, xaxis:{title:'Días'}, yaxis:{title:'Pacientes'}, paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)'}, cfg);
-
-  // KPC
-  const kpc = groupCount(FILTERED,'kpc');
-  Plotly.react('g_kpc', [{x:kpc.values.reverse(), y:kpc.labels.slice().reverse(), type:'bar', orientation:'h'}],
-    {margin:{l:120,r:20,t:10,b:30}, xaxis:{title:'Pacientes'}, paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)'}, cfg);
-}
-
-function refreshAll(){
-  applyFilters();
-  document.getElementById('noData').classList.toggle('d-none', FILTERED.length>0);
-  kpis();
-  buildCharts();
-}
-
-function setSelectOptions(selId, values){
-  const sel = document.getElementById(selId);
-  const keep = sel.value;
-  sel.innerHTML = '<option value="">Todos</option>' + values.map(v=>`<option>${v}</option>`).join('');
-  if(values.includes(keep)) sel.value = keep;
+  const ts=timeSeries(FILTERED);
+  Plotly.react('g_ts', [{x:ts.x,y:ts.y,type:'scatter',mode:'lines+markers',fill:'tozeroy',name:'Admisiones'}],
+    {margin:{l:40,r:10,t:10,b:30},xaxis:{rangeslider:{visible:true}},yaxis:{title:"Admisiones/día"},paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)'},{displayModeBar:false,responsive:true});
+  const med=groupCount(FILTERED,'medico',10);
+  Plotly.react('g_med',[{x:med.values.reverse(),y:med.labels.slice().reverse(),type:'bar',orientation:'h'}],
+    {margin:{l:120,r:20,t:10,b:30},xaxis:{title:'Casos'},paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)'},{displayModeBar:false,responsive:true});
+  const org=groupCount(FILTERED,'origen',10);
+  Plotly.react('g_org',[{x:org.values.reverse(),y:org.labels.slice().reverse(),type:'bar',orientation:'h'}],
+    {margin:{l:120,r:20,t:10,b:30},xaxis:{title:'Casos'},paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)'},{displayModeBar:false,responsive:true});
+  const tip=groupCount(FILTERED,'tipo',10);
+  Plotly.react('g_tipo',[{x:tip.values.reverse(),y:tip.labels.slice().reverse(),type:'bar',orientation:'h'}],
+    {margin:{l:120,r:20,t:10,b:30},xaxis:{title:'Casos'},paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)'},{displayModeBar:false,responsive:true});
+  const cond=groupCount(FILTERED,'cond_egreso');
+  Plotly.react('g_cond',[{labels:cond.labels,values:cond.values,type:'pie',hole:.45}],
+    {margin:{l:10,r:10,t:10,b:10},legend:{orientation:'h'},paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)'},{displayModeBar:false,responsive:true});
+  const los=FILTERED.map(d=>Number.isFinite(d.los)?d.los:null).filter(x=>Number.isFinite(x));
+  const maxLos=Math.max(1,...los,1);
+  Plotly.react('g_los',[{x:los,type:'histogram',xbins:{start:0,end:maxLos,size:1}}],
+    {margin:{l:40,r:10,t:10,b:30},xaxis:{title:'Días'},yaxis:{title:'Pacientes'},paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)'},{displayModeBar:false,responsive:true});
+  const kpc=groupCount(FILTERED,'kpc');
+  Plotly.react('g_kpc',[{x:kpc.values.reverse(),y:kpc.labels.slice().reverse(),type:'bar',orientation:'h'}],
+    {margin:{l:120,r:20,t:10,b:30},xaxis:{title:'Pacientes'},paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)'},{displayModeBar:false,responsive:true});
 }
 
 function attachInteractions(){
-  // Clic en barras -> selecciona filtro
-  document.getElementById('g_med').on('plotly_click', (ev)=>{
-    const label = ev.points?.[0]?.y; if(!label) return;
-    document.getElementById('fMed').value = label; S.medico = label; refreshAll();
+  document.getElementById('g_med').on('plotly_click',ev=>{ const label=ev.points?.[0]?.y; if(!label) return; document.getElementById('fMed').value=label; S.medico=label; refreshAll(); });
+  document.getElementById('g_org').on('plotly_click',ev=>{ const label=ev.points?.[0]?.y; if(!label) return; document.getElementById('fOrg').value=label; S.origen=label; refreshAll(); });
+  document.getElementById('g_tipo').on('plotly_click',ev=>{ const label=ev.points?.[0]?.y; if(!label) return; document.getElementById('fTipo').value=label; S.tipo=label; refreshAll(); });
+  document.getElementById('g_cond').on('plotly_click',ev=>{ const label=ev.points?.[0]?.label; if(!label) return; S.cond=(S.cond===label)?"":label; refreshAll(); });
+  document.getElementById('g_ts').on('plotly_relayout',ev=>{
+    const a=ev['xaxis.range[0]']||ev['xaxis.range']?.[0];
+    const b=ev['xaxis.range[1]']||ev['xaxis.range']?.[1];
+    if(a&&b){ S.dateFrom=a.slice(0,10); S.dateTo=b.slice(0,10); document.getElementById('fIni').value=S.dateFrom; document.getElementById('fFin').value=S.dateTo; refreshAll(); }
   });
-  document.getElementById('g_org').on('plotly_click', (ev)=>{
-    const label = ev.points?.[0]?.y; if(!label) return;
-    document.getElementById('fOrg').value = label; S.origen = label; refreshAll();
-  });
-  document.getElementById('g_tipo').on('plotly_click', (ev)=>{
-    const label = ev.points?.[0]?.y; if(!label) return;
-    document.getElementById('fTipo').value = label; S.tipo = label; refreshAll();
-  });
-  document.getElementById('g_cond').on('plotly_click', (ev)=>{
-    const label = ev.points?.[0]?.label; if(!label) return;
-    // toggle cond
-    S.cond = (S.cond===label) ? "" : label;
-    refreshAll();
-  });
-
-  // Range temporal desde relayout (zoom/brush)
-  document.getElementById('g_ts').on('plotly_relayout', (ev)=>{
-    const a = ev['xaxis.range[0]'] || ev['xaxis.range[0]'] || ev['xaxis.range']?.[0];
-    const b = ev['xaxis.range[1]'] || ev['xaxis.range[1]'] || ev['xaxis.range']?.[1];
-    if(a && b){
-      S.dateFrom = a.slice(0,10);
-      S.dateTo   = b.slice(0,10);
-      document.getElementById('fIni').value = S.dateFrom;
-      document.getElementById('fFin').value = S.dateTo;
-      refreshAll();
-    }
-  });
-
-  // Controles
-  document.getElementById('fMed').addEventListener('change', e=>{ S.medico = e.target.value; refreshAll(); });
-  document.getElementById('fOrg').addEventListener('change', e=>{ S.origen = e.target.value; refreshAll(); });
-  document.getElementById('fTipo').addEventListener('change', e=>{ S.tipo   = e.target.value; refreshAll(); });
-  document.getElementById('fObitos').addEventListener('change', e=>{ S.obitosOnly = e.target.checked; refreshAll(); });
-  document.getElementById('fVI').addEventListener('change', e=>{ S.viOnly = e.target.checked; refreshAll(); });
-  document.getElementById('fIni').addEventListener('change', e=>{ S.dateFrom = e.target.value || null; refreshAll(); });
-  document.getElementById('fFin').addEventListener('change', e=>{ S.dateTo   = e.target.value || null; refreshAll(); });
-
+  document.getElementById('fMed').addEventListener('change',e=>{ S.medico=e.target.value; refreshAll(); });
+  document.getElementById('fOrg').addEventListener('change',e=>{ S.origen=e.target.value; refreshAll(); });
+  document.getElementById('fTipo').addEventListener('change',e=>{ S.tipo=e.target.value; refreshAll(); });
+  document.getElementById('fObitos').addEventListener('change',e=>{ S.obitosOnly=e.target.checked; refreshAll(); });
+  document.getElementById('fVI').addEventListener('change',e=>{ S.viOnly=e.target.checked; refreshAll(); });
+  document.getElementById('fIni').addEventListener('change',e=>{ S.dateFrom=e.target.value||null; refreshAll(); });
+  document.getElementById('fFin').addEventListener('change',e=>{ S.dateTo=e.target.value||null; refreshAll(); });
   document.querySelectorAll('[data-quick]').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const q = btn.getAttribute('data-quick');
+    btn.addEventListener('click',()=>{
+      const q=btn.getAttribute('data-quick');
       if(q==='all'){ S.dateFrom=null; S.dateTo=null; document.getElementById('fIni').value=''; document.getElementById('fFin').value=''; }
       else{
-        const maxd = RAW.map(r=>r.fec_ing).sort().pop();
-        const from = new Date(maxd); from.setDate(from.getDate()-parseInt(q,10));
-        S.dateFrom = from.toISOString().slice(0,10);
-        S.dateTo   = maxd;
-        document.getElementById('fIni').value=S.dateFrom;
-        document.getElementById('fFin').value=S.dateTo;
+        const dates=[...new Set(RAW.map(r=>r.fec_ing))].sort();
+        if(!dates.length){ refreshAll(); return; }
+        const maxd=dates[dates.length-1];
+        const from=new Date(maxd); from.setDate(from.getDate()-parseInt(q,10));
+        S.dateFrom=from.toISOString().slice(0,10); S.dateTo=maxd;
+        document.getElementById('fIni').value=S.dateFrom; document.getElementById('fFin').value=S.dateTo;
       }
       refreshAll();
     });
   });
-
-  document.getElementById('btnResetAll').addEventListener('click', ()=>{
-    S.dateFrom = S.dateTo = null;
-    S.medico = S.origen = S.tipo = S.cond = "";
-    S.obitosOnly = S.viOnly = false;
-    document.getElementById('fIni').value='';
-    document.getElementById('fFin').value='';
-    document.getElementById('fMed').value='';
-    document.getElementById('fOrg').value='';
-    document.getElementById('fTipo').value='';
-    document.getElementById('fObitos').checked=false;
-    document.getElementById('fVI').checked=false;
+  document.getElementById('btnResetAll').addEventListener('click',()=>{
+    S.dateFrom=S.dateTo=null; S.medico=S.origen=S.tipo=S.cond=""; S.obitosOnly=S.viOnly=false;
+    ['fIni','fFin','fMed','fOrg','fTipo'].forEach(id=>{ const el=document.getElementById(id); if(el.tagName==='SELECT') el.value=''; else el.value=''; });
+    document.getElementById('fObitos').checked=false; document.getElementById('fVI').checked=false;
     refreshAll();
   });
 }
 
-function bootstrap(){
-  fetch(DATA_URL).then(r=>r.json()).then(payload=>{
-    RAW = payload.records || [];
-    document.getElementById('updated').textContent = "Actualizado: "+(payload.updated||"—");
-    if(!RAW.length){
-      document.getElementById('noData').classList.remove('d-none');
-      return;
-    }
-    // opciones en selects
-    setSelectOptions('fMed',  uniqSorted(RAW.map(r=>r.medico)));
-    setSelectOptions('fOrg',  uniqSorted(RAW.map(r=>r.origen)));
-    setSelectOptions('fTipo', uniqSorted(RAW.map(r=>r.tipo)));
-    // rango por defecto: últimos 180 días si aplica
-    const dates = uniqSorted(RAW.map(r=>r.fec_ing));
-    if(dates.length){
-      const maxd = dates[dates.length-1];
-      const from = new Date(maxd); from.setDate(from.getDate()-180);
-      S.dateFrom = from.toISOString().slice(0,10);
-      S.dateTo   = maxd;
-      document.getElementById('fIni').value = S.dateFrom;
-      document.getElementById('fFin').value = S.dateTo;
-    }
-    attachInteractions();
-    refreshAll();
-  }).catch(err=>{
-    console.error(err);
-    document.getElementById('noData').classList.remove('d-none');
-  });
+function setSelectOptions(id, values){
+  const sel=document.getElementById(id); const keep=sel.value;
+  sel.innerHTML='<option value="">Todos</option>'+values.map(v=>`<option>${v}</option>`).join('');
+  if(values.includes(keep)) sel.value=keep;
+}
+
+function refreshAll(){ applyFilters(); document.getElementById('noData').classList.toggle('d-none', FILTERED.length>0); kpis(); buildCharts(); }
+
+function tryInitFromEmbedded(){
+  try{
+    const raw = document.getElementById('PAYLOAD').textContent;
+    if(!raw) return null;
+    return JSON.parse(raw);
+  }catch(e){ console.warn('No payload embebido', e); return null; }
+}
+
+async function bootstrap(){
+  let payload = tryInitFromEmbedded();
+  if(!payload){
+    // Fallback: intentar assets/data.json por si existe
+    try{
+      const r=await fetch('assets/data.json'); if(r.ok){ payload=await r.json(); }
+    }catch(e){ console.error(e); }
+  }
+  if(!payload || !payload.records){ document.getElementById('noData').classList.remove('d-none'); return; }
+  RAW = payload.records;
+  document.getElementById('updated').textContent = "Actualizado: " + (payload.updated || "—");
+  setSelectOptions('fMed',  [...new Set(RAW.map(r=>r.medico))].filter(Boolean).sort());
+  setSelectOptions('fOrg',  [...new Set(RAW.map(r=>r.origen))].filter(Boolean).sort());
+  setSelectOptions('fTipo', [...new Set(RAW.map(r=>r.tipo))].filter(Boolean).sort());
+  // rango por defecto: últimos 180 días
+  const dates=[...new Set(RAW.map(r=>r.fec_ing))].filter(Boolean).sort();
+  if(dates.length){
+    const maxd=dates[dates.length-1]; const from=new Date(maxd); from.setDate(from.getDate()-180);
+    S.dateFrom=from.toISOString().slice(0,10); S.dateTo=maxd;
+    document.getElementById('fIni').value=S.dateFrom; document.getElementById('fFin').value=S.dateTo;
+  }
+  attachInteractions(); refreshAll();
 }
 bootstrap();
 </script>
@@ -624,38 +462,16 @@ bootstrap();
 </html>
 """
 
-def write_plotly_html():
-    (REPORT_DIR / "index.html").write_text(HTML, encoding="utf-8")
+def write_plotly_html(payload: dict):
+    html = HTML_TMPL.replace("__PAYLOAD_JSON__", json.dumps(payload, ensure_ascii=False))
+    (REPORT_DIR / "index.html").write_text(html, encoding="utf-8")
 
-# =========================
-# (Opcional) Informe estático (si quieres mantenerlo)
-# =========================
-# Puedes dejar tus funciones de PNG/Markdown aquí si las necesitas,
-# o comentar su uso para tener solo el tablero interactivo.
-
-# =========================
-# Main
-# =========================
+# ---------- main ----------
 def main():
     df_raw = load_data()
     df = prepare(df_raw)
-
-    # 1) JSON para el tablero
-    export_json(df, ASSETS_DIR / "data.json")
-
-    # 2) HTML interactivo Plotly
-    write_plotly_html()
-
-    # 3) (Opcional) Si quieres seguir generando el informe estático con PNGs y markdown,
-    #    llama aquí a tus funciones existentes (coméntalas si no las necesitas):
-    #
-    # from math import isnan
-    # timeseries_and_census(df)
-    # distribution_plots(df)
-    # bar_plots(df)
-    # kpis = compute_kpis(df)
-    # tables = group_tables(df)
-    # write_markdown(kpis, tables)
+    payload = export_payload(df)   # guarda report/assets/data.json y devuelve dict
+    write_plotly_html(payload)     # genera report/index.html con DATA embebida
 
 if __name__ == "__main__":
     main()
