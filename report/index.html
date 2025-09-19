@@ -1,276 +1,124 @@
 <!doctype html>
 <html lang="es">
 <head>
-<meta charset="utf-8">
-<title>UCI · Tablero interactivo</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="https://cdn.plot.ly/plotly-2.33.0.min.js"></script>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-<style>
-:root{ --primary:#0ea5e9; --secondary:#8b5cf6; --txt:#e5e7eb; --muted:#93a4b8 }
-html,body{height:100%}
-body{
-  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Noto Sans', Helvetica, Arial, sans-serif;
-  background: radial-gradient(1200px 600px at 20% -10%, #1f3b68 0%, #0b1020 55%, #0b0f18 100%);
-  color:var(--txt);
-}
-.hdr{background:linear-gradient(135deg,var(--primary),var(--secondary));color:#fff;border-radius:16px;padding:16px 18px;margin:12px 0;
-display:flex;align-items:center;justify-content:space-between;gap:16px}
-.glass{background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.02));backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.08);border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
-.card-kpi{ padding:12px 14px;border-radius:14px;display:flex;gap:12px;align-items:center }
-.k-val{ font-size:1.35rem; font-weight:800 }
-.k-lbl{ color:#c6d0e0; font-size:.9rem }
-.btn-clear{ color:#fff; border-color: rgba(255,255,255,.45)}
-.btn-clear:hover{ background: rgba(255,255,255,.1)}
-.ctrl .form-select,.ctrl .form-control{ background: rgba(255,255,255,.92) }
-.badge-filter{ background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.25)}
-.empty{ border:1px dashed rgba(255,255,255,.35); border-radius:12px; padding:16px; color:#cfe3ff; background:rgba(255,255,255,.04) }
-a,a:hover{color:#9ecbff}
-</style>
+  <meta charset="utf-8">
+  <title>Registro UCI · IPS</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,follow">
+  <style>
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif;
+      background:#0f172a; color:#e2e8f0;
+    }
+    header {
+      padding: 12px 16px; background:#0b1220;
+      border-bottom:1px solid #1f2937;
+      display:flex; gap:12px; align-items:center;
+    }
+    header h1 { font-size: 1rem; margin: 0; font-weight: 700; letter-spacing:.2px; }
+    .hint { padding: 8px 16px; background:#111827; color:#cbd5e1; font-size:.9rem; border-bottom:1px solid #1f2937; }
+    .wrap { height: calc(100% - 82px); }
+    iframe { width: 100%; height: 100%; border: 0; background:#fff; }
+    .fallback { padding: 14px 16px; }
+    .btn {
+      display:inline-block; padding:10px 14px; border-radius:10px;
+      background:#22c55e; color:#0f172a;
+      text-decoration:none; font-weight:700;
+    }
+    .btn:focus, .btn:hover { filter: brightness(1.05); }
+  </style>
 </head>
+
 <body>
-<div class="container py-3">
+  <header>
+    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="#22c55e" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M8 1a7 7 0 1 0 6.938 6.09.5.5 0 0 0-.812-.39A5.5 5.5 0 1 1 8 2.5a.5.5 0 0 0 0-1.5z"/>
+      <path d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 1 0-.896.444A4 4 0 1 1 8 4a.5.5 0 0 0 0-1z"/>
+    </svg>
+    <h1>Registro UCI · IPS</h1>
+  </header>
 
-  <div class="hdr">
-    <div>
-      <h1 class="h5 m-0">UCI · Tablero interactivo</h1>
-      <div class="small opacity-75">Filtra con controles o clic en barras/sectores • doble clic para quitar zoom local.</div>
-    </div>
-    <div class="text-end">
-      <div id="updated" class="small">Actualizado: —</div>
-      <button id="btnResetAll" class="btn btn-outline-light btn-sm btn-clear mt-2">Limpiar filtros</button>
-    </div>
+  <div class="hint" id="updated">
+    <!-- Se mostrará la fecha de última actualización -->
   </div>
 
-  <div class="glass p-3 mb-3 ctrl">
-    <div class="row g-2 align-items-end">
-      <div class="col-12 col-md-3">
-        <label class="form-label mb-1">Rango de fechas (ingreso)</label>
-        <div class="d-flex gap-2">
-          <input id="fIni" type="date" class="form-control form-control-sm">
-          <input id="fFin" type="date" class="form-control form-control-sm">
-        </div>
-        <div class="d-flex gap-1 mt-2 flex-wrap">
-          <button class="btn btn-sm btn-outline-secondary" data-quick="30">⏱️ 30 días</button>
-          <button class="btn btn-sm btn-outline-secondary" data-quick="90">90 días</button>
-          <button class="btn btn-sm btn-outline-secondary" data-quick="365">12 meses</button>
-          <button class="btn btn-sm btn-outline-secondary" data-quick="all">Todo</button>
-        </div>
+  <div class="wrap">
+    <iframe
+      src="https://script.google.com/macros/s/AKfycbwI__wQmEKQmfpzVvdtTDoKc6xqSJekT6DHeLL_saw6NCtlyeXhliSnKURcJtQBK2BY/exec"
+      referrerpolicy="no-referrer-when-downgrade"
+      allowfullscreen
+      loading="eager">
+    </iframe>
+    <noscript>
+      <div class="fallback">
+        <p><a class="btn" href="https://script.google.com/macros/s/AKfycbwP2Ppa_f4yxQRugAnlPvXxKW_NhcqBzeulpt0E0LQW3GYtg1ZRGpFXmWON4y-OPaqNFw/exec" target="_blank" rel="noopener">Abrir formulario</a></p>
       </div>
-      <div class="col-12 col-md-3">
-        <label class="form-label mb-1">Médico tratante</label>
-        <select id="fMed" class="form-select form-select-sm"><option value="">Todos</option></select>
-      </div>
-      <div class="col-12 col-md-3">
-        <label class="form-label mb-1">Origen del paciente</label>
-        <select id="fOrg" class="form-select form-select-sm"><option value="">Todos</option></select>
-      </div>
-      <div class="col-12 col-md-3">
-        <label class="form-label mb-1">Tipo de paciente</label>
-        <select id="fTipo" class="form-select form-select-sm"><option value="">Todos</option></select>
-      </div>
-      <div class="col-12 mt-2 d-flex gap-3 align-items-center">
-        <div class="form-check"><input id="fObitos" class="form-check-input" type="checkbox"><label class="form-check-label">Solo Óbitos</label></div>
-        <div class="form-check"><input id="fVI" class="form-check-input" type="checkbox"><label class="form-check-label">Solo VI = Sí</label></div>
-        <span id="activeFilters" class="badge rounded-pill badge-filter ms-auto d-none">—</span>
-      </div>
-    </div>
+    </noscript>
   </div>
 
-  <div class="row g-2 mb-1">
-    <div class="col-6 col-md-3"><div class="glass card-kpi"><div>👣</div><div><div class="k-val" id="k_adm">0</div><div class="k-lbl">Admisiones</div></div></div></div>
-    <div class="col-6 col-md-3"><div class="glass card-kpi"><div>🚪</div><div><div class="k-val" id="k_egr">0</div><div class="k-lbl">Egresos</div></div></div></div>
-    <div class="col-6 col-md-3"><div class="glass card-kpi"><div>🖤</div><div><div class="k-val" id="k_ob">0</div><div class="k-lbl">Óbitos</div></div></div></div>
-    <div class="col-6 col-md-3"><div class="glass card-kpi"><div>📉</div><div><div class="k-val" id="k_mort">0%</div><div class="k-lbl">Mortalidad / egresos</div></div></div></div>
-  </div>
-  <div class="row g-2 mb-3">
-    <div class="col-6 col-md-3"><div class="glass card-kpi"><div>🕒</div><div><div class="k-val" id="k_los_med">—</div><div class="k-lbl">LOS (mediana)</div></div></div></div>
-    <div class="col-6 col-md-3"><div class="glass card-kpi"><div>📋</div><div><div class="k-val" id="k_ap_med">—</div><div class="k-lbl">APACHE II (mediana)</div></div></div></div>
-    <div class="col-6 col-md-3"><div class="glass card-kpi"><div>❤️‍🔥</div><div><div class="k-val" id="k_sofa_med">—</div><div class="k-lbl">SOFA 48h (mediana)</div></div></div></div>
-    <div class="col-6 col-md-3"><div class="glass card-kpi"><div>🫁</div><div><div class="k-val" id="k_vi">—</div><div class="k-lbl">Vent. invasiva</div></div></div></div>
-  </div>
+  <!-- Plotly opcional -->
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 
-  <div id="noData" class="empty d-none mb-3"><b>No hay datos con “Fecha de Ingreso” válida.</b><div class="small">Revisa que <code>assets/data.json</code> exista y tenga registros.</div></div>
+  <!-- Script de carga de datos y preparación para render -->
+  <script>
+  async function fetchDataJSON() {
+    const url = new URL('assets/data.json', location.href).href + '?v=' + Date.now();
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) throw new Error('Error al cargar data.json: ' + res.status);
+    return res.json();
+  }
 
-  <div class="row g-3">
-    <div class="col-12"><div class="glass p-2"><div id="g_ts"   style="height:280px"></div></div></div>
-    <div class="col-md-4"><div class="glass p-2"><div id="g_med"  style="height:320px"></div></div></div>
-    <div class="col-md-4"><div class="glass p-2"><div id="g_org"  style="height:320px"></div></div></div>
-    <div class="col-md-4"><div class="glass p-2"><div id="g_tipo" style="height:320px"></div></div></div>
-    <div class="col-md-4"><div class="glass p-2"><div id="g_cond" style="height:300px"></div></div></div>
-    <div class="col-md-4"><div class="glass p-2"><div id="g_los"  style="height:300px"></div></div></div>
-    <div class="col-md-4"><div class="glass p-2"><div id="g_kpc"  style="height:300px"></div></div></div>
-  </div>
+  function toISODate(s) {
+    if (!s) return null;
+    if (s instanceof Date && !isNaN(+s)) return s.toISOString().slice(0,10);
+    const str = String(s).trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.slice(0,10);
+    const d = new Date(str);
+    return isNaN(+d) ? null : d.toISOString().slice(0,10);
+  }
 
-  <div class="text-end mt-3"><a href="assets/data.json" target="_blank" rel="noreferrer">Ver JSON</a></div>
-</div>
+  function normalizeRecord(r) {
+    return {
+      fec_ing: toISODate(r['Fecha de Ingreso'] || r.fec_ing),
+      fec_egr: toISODate(r['Fecha de Egreso'] || r.fec_egr),
+      medico: (r['Médico Tratante'] || r.medico || '').trim(),
+      tipo:   (r['Tipos de Pacientes'] || r.tipo || '').trim(),
+      cond:   (r['Condición al Egreso'] || r.cond || '').trim(),
+      vi:     String(r['Ventilación Invasiva'] || r.vi || '').trim(),
+      los:    Number(r['Días de Internación'] || r.los || 0),
+      kpc:    String(r['KPC/MBL POSITIVO EN PACIENTES'] || r.kpc || '').trim(),
+      apache: Number(r['APACHE II a las 24 h del ingreso'] || r.apache || 0),
+      sofa:   Number(r['SOFA a las 48 h del ingreso'] || r.sofa || 0),
+    };
+  }
 
-<!-- DATA EMBEBIDA -->
-<script type="application/json" id="PAYLOAD">{"updated": "2025-09-19 00:15 UTC", "timezone": "UTC", "n": 92, "records": [{"fec_ing": "2025-07-29", "fec_egr": "2025-08-01", "medico": "4 Dra Jazmin Cáceres", "origen": "Traumatología", "tipo": "Traumatología Programada", "cond_egreso": "Óbito", "kpc": "Pendiente HR ingreso", "vi": "No", "los": 4, "apache2": 26, "sofa48": 7}, {"fec_ing": "2025-08-02", "fec_egr": "2025-08-02", "medico": "4 Dra Jazmin Cáceres", "origen": "Cx Gral Urgencias", "tipo": "Paciente Clínico", "cond_egreso": "Óbito", "kpc": "Pendiente HR ingreso", "vi": "Sí", "los": 1, "apache2": 25, "sofa48": 12}, {"fec_ing": "2025-07-29", "fec_egr": "2025-08-03", "medico": "4 Dra Jazmin Cáceres", "origen": "Traumatología", "tipo": "Traumatología Programada", "cond_egreso": "Alta a piso", "kpc": "Pendiente HR ingreso", "vi": "No", "los": 5, "apache2": 22, "sofa48": 6}, {"fec_ing": "2025-08-02", "fec_egr": "2025-08-04", "medico": "4 Dra Jazmin Cáceres", "origen": "Neurocx", "tipo": "Neurocx Urgencias", "cond_egreso": "Alta a piso", "kpc": "Pendiente HR ingreso", "vi": "No", "los": 2, "apache2": 8, "sofa48": 0}, {"fec_ing": "2025-08-06", "fec_egr": "2025-08-07", "medico": "4 Dra Jazmin Cáceres", "origen": "Traumatología", "tipo": "Traumatología Programada", "cond_egreso": "Alta a piso", "kpc": "Pendiente HR ingreso", "vi": "No", "los": 1, "apache2": 12, "sofa48": 1}, {"fec_ing": "2025-08-05", "fec_egr": "2025-08-06", "medico": "4 Dra Jazmin Cáceres", "origen": "Cx Gral Piso", "tipo": "Cirugía Gral y especialidades Programada", "cond_egreso": "Alta a piso", "kpc": "Pendiente HR ingreso", "vi": "No", "los": 1, "apache2": 6, "sofa48": 1}, {"fec_ing": "2025-08-04", "fec_egr": "2025-08-06", "medico": "4 Dra Jazmin Cáceres", "origen": "Neurocx", "tipo": "Neurocx Programada", "cond_egreso": "Alta a piso", "kpc": "Pendiente HR ingreso", "vi": "No", "los": 2, "apache2": 7, "sofa48": 0}, {"fec_ing": "2025-08-07", "fec_egr": "2025-08-08", "medico": "4 Dra Jazmin Cáceres", "origen": "Cx Gral Piso", "tipo": "Cirugía Gral y especialidades Programada", "cond_egreso": "Alta a piso", "kpc": "Pendiente HR ingreso", "vi": "No", "los": 1, "apache2": 14, "sofa48": 1}, {"fec_ing": "2025-07-23", "fec_egr": "2025-08-10", "medico": "4 Dra Jazmin Cáceres", "origen": "Reanimación", "tipo": "Paciente Clínico", "cond_egreso": "Óbito", "kpc": "Negativo", "vi": "Sí", "los": 18, "apache2": 19, "sofa48": 11}, {"fec_ing": "2025-08-04", "fec_egr": "2025-08-11", "medico": "4 Dra Jazmin Cáceres", "origen": "Reanimación", "tipo": "Neurocx Urgencias", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "Sí", "los": 7, "apache2": 15, "sofa48": 6}, {"fec_ing": "2025-07-01", "fec_egr": "2025-08-04", "medico": "1 Dr Oscar Gómez", "origen": "Cx Gral Piso", "tipo": "Cirugía Gral y especialidades de Urgencias", "cond_egreso": "Alta a piso", "kpc": "HR de Prevalencia", "vi": "No", "los": 33, "apache2": 11, "sofa48": 9}, {"fec_ing": "2025-04-22", "fec_egr": "2025-08-05", "medico": "1 Dr Oscar Gómez", "origen": "IPS Interior", "tipo": "Cirugía Gral y especialidades de Urgencias", "cond_egreso": "Alta a piso", "kpc": "HR de Prevalencia", "vi": "Sí", "los": 102, "apache2": 18, "sofa48": 12}, {"fec_ing": "2025-07-31", "fec_egr": "2025-08-02", "medico": "3 Dra Alejandra Ramirez", "origen": "Traumatología", "tipo": "Traumatología de Urgencias", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "No", "los": 3, "apache2": 12, "sofa48": 2}, {"fec_ing": "2025-08-01", "fec_egr": "2025-08-03", "medico": "3 Dra Alejandra Ramirez", "origen": "Traumatología", "tipo": "Traumatología Programada", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "No", "los": 3, "apache2": 11, "sofa48": 1}, {"fec_ing": "2025-07-22", "fec_egr": "2025-08-04", "medico": "3 Dra Alejandra Ramirez", "origen": "Reanimación", "tipo": "Paciente Clínico", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "Sí", "los": 14, "apache2": 31, "sofa48": 12}, {"fec_ing": "2025-08-01", "fec_egr": "2025-08-07", "medico": "3 Dra Alejandra Ramirez", "origen": "Cx Gral Piso", "tipo": "Paciente Qx con complicación Quirúrgica", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "No", "los": 7, "apache2": 21, "sofa48": 5}, {"fec_ing": "2025-08-08", "fec_egr": "2025-08-10", "medico": "3 Dra Alejandra Ramirez", "origen": "Cx Gral Piso", "tipo": "Cirugía Gral y especialidades Programada", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "No", "los": 3, "apache2": 10, "sofa48": 0}, {"fec_ing": "2025-08-04", "fec_egr": "2025-08-11", "medico": "3 Dra Alejandra Ramirez", "origen": "Cx Gral Piso", "tipo": "Paciente Qx con complicación Quirúrgica", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "No", "los": 8, "apache2": 21, "sofa48": 5}, {"fec_ing": "2025-08-11", "fec_egr": "2025-08-12", "medico": "3 Dra Alejandra Ramirez", "origen": "Cx Gral Piso", "tipo": "Paciente Qx con complicación Quirúrgica", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "Sí", "los": 2, "apache2": 13, "sofa48": 3}, {"fec_ing": "2025-08-11", "fec_egr": "2025-08-12", "medico": "3 Dra Alejandra Ramirez", "origen": "Coloproctología", "tipo": "Cirugía Gral y especialidades Programada", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "No", "los": 2, "apache2": 10, "sofa48": 1}, {"fec_ing": "2025-08-11", "fec_egr": "2025-08-13", "medico": "3 Dra Alejandra Ramirez", "origen": "Traumatología", "tipo": "Traumatología de Urgencias", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "No", "los": 3, "apache2": 19, "sofa48": 1}, {"fec_ing": "2025-08-12", "fec_egr": "2025-08-14", "medico": "4 Dra Jazmin Cáceres", "origen": "Reanimación", "tipo": "Politrauma(Accidente moto, auto, arrollamiento peatón)", "cond_egreso": "Alta a piso", "kpc": "Pendiente HR ingreso", "vi": "Sí", "los": 2, "apache2": 15, "sofa48": 7}, {"fec_ing": "2025-08-13", "fec_egr": "2025-08-14", "medico": "4 Dra Jazmin Cáceres", "origen": "Cx Gral Piso", "tipo": "Cirugía Gral y especialidades Programada", "cond_egreso": "Alta a piso", "kpc": "Pendiente HR ingreso", "vi": "No", "los": 1, "apache2": 6, "sofa48": 0}, {"fec_ing": "2025-08-13", "fec_egr": "2025-08-18", "medico": "4 Dra Jazmin Cáceres", "origen": "Traumatología", "tipo": "Traumatología Programada", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "No", "los": 5, "apache2": 13, "sofa48": 4}, {"fec_ing": "2025-08-08", "fec_egr": "2025-08-18", "medico": "4 Dra Jazmin Cáceres", "origen": "Reanimación", "tipo": "Paciente Clínico", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "Sí", "los": 10, "apache2": 21, "sofa48": 9}, {"fec_ing": "2025-08-16", "fec_egr": "2025-08-18", "medico": "4 Dra Jazmin Cáceres", "origen": "Cx Gral Piso", "tipo": "Cirugía Gral y especialidades de Urgencias", "cond_egreso": "Alta a piso", "kpc": "Pendiente HR ingreso", "vi": "No", "los": 2, "apache2": 12, "sofa48": 2}, {"fec_ing": "2025-08-14", "fec_egr": "2025-08-16", "medico": "4 Dra Jazmin Cáceres", "origen": "Traumatología", "tipo": "Traumatología Programada", "cond_egreso": "Alta a piso", "kpc": "Pendiente HR ingreso", "vi": "No", "los": 2, "apache2": 16, "sofa48": 6}, {"fec_ing": "2025-08-13", "fec_egr": null, "medico": "4 Dra Jazmin Cáceres", "origen": "Traumatología", "tipo": "Traumatología Programada", "cond_egreso": "Alta a piso", "kpc": "Pendiente HR ingreso", "vi": "No", "los": 3, "apache2": 18, "sofa48": 5}, {"fec_ing": "2025-08-22", "fec_egr": "2025-08-25", "medico": "4 Dra Jazmin Cáceres", "origen": "Clínica Médica", "tipo": "Neurocx Urgencias", "cond_egreso": "Alta a piso", "kpc": "Pendiente HR ingreso", "vi": "Sí", "los": 3, "apache2": 21, "sofa48": 2}, {"fec_ing": "2025-08-19", "fec_egr": "2025-08-22", "medico": "4 Dra Jazmin Cáceres", "origen": "Traumatología", "tipo": "Traumatología Programada", "cond_egreso": "Alta a piso", "kpc": "Pendiente HR ingreso", "vi": "No", "los": 3, "apache2": 18, "sofa48": 3}, {"fec_ing": "2025-08-06", "fec_egr": "2025-08-08", "medico": "6 Dr Pablo Rolon", "origen": "Traumatología", "tipo": "Traumatología Programada", "cond_egreso": "Alta a piso", "kpc": "Pendiente HR ingreso", "vi": "No", "los": 2, "apache2": 6, "sofa48": 0}, {"fec_ing": "2025-07-29", "fec_egr": "2025-08-07", "medico": "6 Dr Pablo Rolon", "origen": "Reanimación", "tipo": "Traumatología de Urgencias", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "No", "los": 9, "apache2": 9, "sofa48": 2}, {"fec_ing": "2025-06-30", "fec_egr": "2025-08-01", "medico": "6 Dr Pablo Rolon", "origen": "Traumatología", "tipo": "Traumatología Programada", "cond_egreso": "Alta a piso", "kpc": "HR de Ingreso", "vi": "Sí", "los": 32, "apache2": 13, "sofa48": 6}, {"fec_ing": "2025-08-07", "fec_egr": "2025-08-08", "medico": "6 Dr Pablo Rolon", "origen": "Cx Gral Piso", "tipo": "Cirugía Gral y especialidades Programada", "cond_egreso": "Alta a piso", "kpc": "Pendiente HR ingreso", "vi": "No", "los": 1, "apache2": 4, "sofa48": 0}, {"fec_ing": "2025-08-22", "fec_egr": "2025-08-27", "medico": "4 Dra Jazmin Cáceres", "origen": "Cx Gral Piso", "tipo": "Cirugía Gral y especialidades de Urgencias", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "No", "los": 5, "apache2": 13, "sofa48": 1}, {"fec_ing": "2025-07-30", "fec_egr": "2025-08-04", "medico": "2 Dr Rubén Goto", "origen": "Traumatología", "tipo": "Traumatología Programada", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "No", "los": 5, "apache2": 18, "sofa48": 6}, {"fec_ing": "2025-07-30", "fec_egr": "2025-08-05", "medico": "2 Dr Rubén Goto", "origen": "Clínica Médica", "tipo": "Paciente Qx con complicación Clínica", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "No", "los": 6, "apache2": 21, "sofa48": 7}, {"fec_ing": "2025-07-31", "fec_egr": "2025-08-05", "medico": "2 Dr Rubén Goto", "origen": "Reanimación", "tipo": "Paciente Clínico", "cond_egreso": "Óbito", "kpc": "Negativo", "vi": "Sí", "los": 5, "apache2": 28, "sofa48": 12}, {"fec_ing": "2025-08-04", "fec_egr": "2025-08-05", "medico": "2 Dr Rubén Goto", "origen": "Neurocx", "tipo": "Neurocx Urgencias", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "No", "los": 1, "apache2": 2, "sofa48": 0}, {"fec_ing": "2025-08-01", "fec_egr": "2025-08-11", "medico": "2 Dr Rubén Goto", "origen": "Reanimación", "tipo": "Cirugía Gral y especialidades de Urgencias", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "Sí", "los": 10, "apache2": 15, "sofa48": 5}, {"fec_ing": "2025-08-09", "fec_egr": "2025-08-13", "medico": "2 Dr Rubén Goto", "origen": "Clínica Médica", "tipo": "Neurocx Urgencias", "cond_egreso": "Alta a piso", "kpc": "Conocido portador MDR", "vi": "No", "los": 4, "apache2": 17, "sofa48": 5}, {"fec_ing": "2025-08-12", "fec_egr": "2025-08-18", "medico": "2 Dr Rubén Goto", "origen": "Urgencias", "tipo": "Paciente Qx con complicación Clínica", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "No", "los": 6, "apache2": 9, "sofa48": 3}, {"fec_ing": "2025-08-14", "fec_egr": "2025-08-18", "medico": "2 Dr Rubén Goto", "origen": "Cx Gral Piso", "tipo": "Cirugía Gral y especialidades Programada", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "No", "los": 4, "apache2": 19, "sofa48": 6}, {"fec_ing": "2025-07-16", "fec_egr": "2025-08-19", "medico": "2 Dr Rubén Goto", "origen": "Reanimación", "tipo": "Paciente Clínico", "cond_egreso": "Óbito", "kpc": "HR de Prevalencia", "vi": "Sí", "los": 34, "apache2": 20, "sofa48": 6}, {"fec_ing": "2025-08-26", "fec_egr": "2025-08-29", "medico": "4 Dra Jazmin Cáceres", "origen": "Urología", "tipo": "Paciente Qx con complicación Quirúrgica", "cond_egreso": "Alta a piso", "kpc": "Pendiente HR ingreso", "vi": "No", "los": 3, "apache2": 13, "sofa48": 1}, {"fec_ing": "2025-08-08", "fec_egr": "2025-08-25", "medico": "1 Dr Oscar Gómez", "origen": "Traumatología", "tipo": "Urología Urgencias", "cond_egreso": "Alta a piso", "kpc": "HR de Ingreso", "vi": "Sí", "los": 17, "apache2": 8, "sofa48": 3}, {"fec_ing": "2025-08-22", "fec_egr": "2025-08-25", "medico": "2 Dr Rubén Goto", "origen": "Cx Gral Piso", "tipo": "Paciente Qx con complicación Clínica", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "No", "los": 3, "apache2": 10, "sofa48": 3}, {"fec_ing": "2025-08-18", "fec_egr": "2025-08-27", "medico": "1 Dr Oscar Gómez", "origen": "Traumatología", "tipo": "Urología Urgencias", "cond_egreso": "Alta a piso", "kpc": "HR de Ingreso", "vi": "No", "los": 9, "apache2": 6, "sofa48": 4}, {"fec_ing": "2025-08-01", "fec_egr": "2025-08-04", "medico": "5 Dr Rodney Recalde", "origen": "Traumatología", "tipo": "Traumatología Programada", "cond_egreso": "Alta a piso", "kpc": "Pendiente HR ingreso", "vi": "No", "los": 3, "apache2": 12, "sofa48": 2}, {"fec_ing": "2025-08-06", "fec_egr": "2025-08-08", "medico": "5 Dr Rodney Recalde", "origen": "Cx Gral Piso", "tipo": "Cirugía Gral y especialidades Programada", "cond_egreso": "Alta a piso", "kpc": "Pendiente HR ingreso", "vi": "No", "los": 2, "apache2": 5, "sofa48": 0}, {"fec_ing": "2025-07-29", "fec_egr": "2025-08-08", "medico": "5 Dr Rodney Recalde", "origen": "Reanimación", "tipo": "Politrauma(Accidente moto, auto, arrollamiento peatón)", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "Sí", "los": 9, "apache2": 12, "sofa48": 4}, {"fec_ing": "2025-08-08", "fec_egr": "2025-08-12", "medico": "5 Dr Rodney Recalde", "origen": "Neurocx", "tipo": "Neurocx Urgencias", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "No", "los": 4, "apache2": 6, "sofa48": 2}, {"fec_ing": "2025-08-13", "fec_egr": "2025-08-16", "medico": "5 Dr Rodney Recalde", "origen": "Neurocx", "tipo": "Neurocx Programada", "cond_egreso": "Alta a piso", "kpc": "Pendiente HR ingreso", "vi": "No", "los": 3, "apache2": 8, "sofa48": 2}, {"fec_ing": "2025-08-06", "fec_egr": "2025-08-16", "medico": "5 Dr Rodney Recalde", "origen": "Reanimación", "tipo": "Neurocx Urgencias", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "Sí", "los": 10, "apache2": 16, "sofa48": 8}, {"fec_ing": "2025-08-02", "fec_egr": "2025-08-19", "medico": "5 Dr Rodney Recalde", "origen": "Reanimación", "tipo": "Neurocx Urgencias", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "Sí", "los": 17, "apache2": 17, "sofa48": 9}, {"fec_ing": "2025-08-19", "fec_egr": "2025-08-20", "medico": "5 Dr Rodney Recalde", "origen": "Neurocx", "tipo": "Neurocx Programada", "cond_egreso": "Alta a piso", "kpc": "Pendiente HR ingreso", "vi": "No", "los": 1, "apache2": 0, "sofa48": 0}, {"fec_ing": "2025-08-16", "fec_egr": "2025-08-20", "medico": "5 Dr Rodney Recalde", "origen": "Cx Gral Piso", "tipo": "Cirugía Gral y especialidades Programada", "cond_egreso": "Alta a piso", "kpc": "HR de Ingreso", "vi": "Sí", "los": 4, "apache2": 18, "sofa48": 8}, {"fec_ing": "2025-08-20", "fec_egr": "2025-08-23", "medico": "5 Dr Rodney Recalde", "origen": "Neurocx", "tipo": "Neurocx Urgencias", "cond_egreso": "Alta a piso", "kpc": "Pendiente HR ingreso", "vi": "Sí", "los": 3, "apache2": 7, "sofa48": 3}, {"fec_ing": "2025-08-07", "fec_egr": "2025-08-25", "medico": "5 Dr Rodney Recalde", "origen": "Reanimación", "tipo": "Politrauma(Accidente moto, auto, arrollamiento peatón)", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "Sí", "los": 18, "apache2": 18, "sofa48": 12}, {"fec_ing": "2025-08-13", "fec_egr": "2025-08-14", "medico": "3 Dra Alejandra Ramirez", "origen": "Mastología", "tipo": "Mastología Programada", "cond_egreso": "Alta a piso", "kpc": "Pendiente HR ingreso", "vi": "No", "los": 2, "apache2": 12, "sofa48": 1}, {"fec_ing": "2025-08-13", "fec_egr": "2025-08-14", "medico": "3 Dra Alejandra Ramirez", "origen": "Traumatología", "tipo": "Neurocx Urgencias", "cond_egreso": "Alta a piso", "kpc": "Pendiente HR ingreso", "vi": "No", "los": 2, "apache2": 18, "sofa48": 1}, {"fec_ing": "2025-08-08", "fec_egr": "2025-08-19", "medico": "3 Dra Alejandra Ramirez", "origen": "Reanimación", "tipo": "Paciente Qx con complicación Clínica", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "Sí", "los": 12, "apache2": 29, "sofa48": 13}, {"fec_ing": "2025-08-13", "fec_egr": "2025-08-19", "medico": "3 Dra Alejandra Ramirez", "origen": "Cx Gral Urgencias", "tipo": "Paciente Qx con complicación Quirúrgica", "cond_egreso": "Alta a piso", "kpc": "HR de Ingreso", "vi": "No", "los": 7, "apache2": 16, "sofa48": 5}, {"fec_ing": "2025-08-14", "fec_egr": "2025-08-19", "medico": "3 Dra Alejandra Ramirez", "origen": "Traumatología", "tipo": "Traumatología de Urgencias", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "No", "los": 6, "apache2": 14, "sofa48": 7}, {"fec_ing": "2025-08-16", "fec_egr": "2025-08-21", "medico": "3 Dra Alejandra Ramirez", "origen": "Urología", "tipo": "Urología Urgencias", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "No", "los": 6, "apache2": 21, "sofa48": 7}, {"fec_ing": "2025-08-19", "fec_egr": "2025-08-26", "medico": "3 Dra Alejandra Ramirez", "origen": "Cx Gral Piso", "tipo": "Paciente Qx con complicación Quirúrgica", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "No", "los": 8, "apache2": 18, "sofa48": 5}, {"fec_ing": "2025-08-19", "fec_egr": "2025-08-23", "medico": "3 Dra Alejandra Ramirez", "origen": "Reanimación", "tipo": "Politrauma(Accidente moto, auto, arrollamiento peatón)", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "No", "los": 5, "apache2": 18, "sofa48": 6}, {"fec_ing": "2025-08-26", "fec_egr": "2025-08-28", "medico": "3 Dra Alejandra Ramirez", "origen": "Cx Gral Piso", "tipo": "Paciente Qx con complicación Quirúrgica", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "No", "los": 3, "apache2": 16, "sofa48": 2}, {"fec_ing": "2025-08-02", "fec_egr": "2025-08-06", "medico": "3 Dra Alejandra Ramirez", "origen": "Cx Gral Piso", "tipo": "Paciente Qx con complicación Quirúrgica", "cond_egreso": "Óbito", "kpc": "Negativo", "vi": "Sí", "los": 5, "apache2": 28, "sofa48": 13}, {"fec_ing": "2025-08-06", "fec_egr": "2025-08-06", "medico": "3 Dra Alejandra Ramirez", "origen": "Reanimación", "tipo": "Neurocx Urgencias", "cond_egreso": "Óbito", "kpc": "Pendiente HR ingreso", "vi": "Sí", "los": 1, "apache2": 26, "sofa48": 10}, {"fec_ing": "2025-08-06", "fec_egr": "2025-08-07", "medico": "3 Dra Alejandra Ramirez", "origen": "Reanimación", "tipo": "Paciente Clínico", "cond_egreso": "Óbito", "kpc": "Pendiente HR ingreso", "vi": "Sí", "los": 2, "apache2": 38, "sofa48": 12}, {"fec_ing": "2025-08-20", "fec_egr": "2025-08-26", "medico": "3 Dra Alejandra Ramirez", "origen": "Cx Gral Urgencias", "tipo": "Paciente Qx con complicación Quirúrgica", "cond_egreso": "Óbito", "kpc": "Negativo", "vi": "Sí", "los": 6, "apache2": 23, "sofa48": 12}, {"fec_ing": "2025-07-31", "fec_egr": "2025-08-02", "medico": "3 Dra Alejandra Ramirez", "origen": "Traumatología", "tipo": "Traumatología Programada", "cond_egreso": "Alta a piso", "kpc": "Pendiente HR ingreso", "vi": "No", "los": 3, "apache2": 18, "sofa48": 2}, {"fec_ing": "2025-08-05", "fec_egr": "2025-08-07", "medico": "3 Dra Alejandra Ramirez", "origen": "Traumatología", "tipo": "Traumatología Programada", "cond_egreso": "Alta a piso", "kpc": "Pendiente HR ingreso", "vi": "No", "los": 3, "apache2": 16, "sofa48": 3}, {"fec_ing": "2025-08-14", "fec_egr": "2025-08-16", "medico": "3 Dra Alejandra Ramirez", "origen": "Neurocx", "tipo": "Neurocx Urgencias", "cond_egreso": "Alta a piso", "kpc": "Pendiente HR ingreso", "vi": "No", "los": 3, "apache2": 11, "sofa48": 2}, {"fec_ing": "2025-07-17", "fec_egr": "2025-08-17", "medico": "1 Dr Oscar Gómez", "origen": "Reanimación", "tipo": "Neurocx Urgencias", "cond_egreso": "Óbito", "kpc": "HR de Prevalencia", "vi": "Sí", "los": 30, "apache2": 14, "sofa48": 6}, {"fec_ing": "2025-07-25", "fec_egr": "2025-08-10", "medico": "5 Dr Rodney Recalde", "origen": "Reanimación", "tipo": "Neurocx Urgencias", "cond_egreso": "Óbito", "kpc": "Negativo", "vi": "Sí", "los": 15, "apache2": 18, "sofa48": 11}, {"fec_ing": "2025-08-10", "fec_egr": "2025-08-11", "medico": "5 Dr Rodney Recalde", "origen": "Reanimación", "tipo": "Neurocx Urgencias", "cond_egreso": "Óbito", "kpc": "Pendiente HR ingreso", "vi": "Sí", "los": 1, "apache2": 20, "sofa48": 13}, {"fec_ing": "2025-08-18", "fec_egr": "2025-08-19", "medico": "5 Dr Rodney Recalde", "origen": "Traumatología", "tipo": "Traumatología de Urgencias", "cond_egreso": "Óbito", "kpc": "Pendiente HR ingreso", "vi": "Sí", "los": 1, "apache2": 18, "sofa48": 12}, {"fec_ing": "2024-08-16", "fec_egr": "2024-08-24", "medico": "5 Dr Rodney Recalde", "origen": "Reanimación", "tipo": "Neurocx Urgencias", "cond_egreso": "Óbito", "kpc": "Negativo", "vi": "Sí", "los": 8, "apache2": 18, "sofa48": 14}, {"fec_ing": "2025-07-31", "fec_egr": "2025-08-02", "medico": "5 Dr Rodney Recalde", "origen": "Traumatología", "tipo": "Traumatología de Urgencias", "cond_egreso": "Alta a piso", "kpc": "Pendiente HR ingreso", "vi": "No", "los": 2, "apache2": 8, "sofa48": 2}, {"fec_ing": "2025-07-24", "fec_egr": "2025-08-02", "medico": "5 Dr Rodney Recalde", "origen": "Reanimación", "tipo": "Paciente Clínico", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "Sí", "los": 9, "apache2": 8, "sofa48": 4}, {"fec_ing": "2025-08-11", "fec_egr": "2025-08-23", "medico": "6 Dr Pablo Rolon", "origen": "Reanimación", "tipo": "Paciente Qx con complicación Clínica", "cond_egreso": "Óbito", "kpc": "Negativo", "vi": "Sí", "los": 13, "apache2": 23, "sofa48": 6}, {"fec_ing": "2025-08-19", "fec_egr": "2025-08-28", "medico": "6 Dr Pablo Rolon", "origen": "Traumatología", "tipo": "Paciente Qx con complicación Clínica", "cond_egreso": "Óbito", "kpc": "Conocido portador MDR", "vi": "Sí", "los": 10, "apache2": 33, "sofa48": 12}, {"fec_ing": "2025-08-19", "fec_egr": "2025-08-22", "medico": "6 Dr Pablo Rolon", "origen": "Cx Gral Urgencias", "tipo": "Cirugía Gral y especialidades de Urgencias", "cond_egreso": "Óbito", "kpc": "Negativo", "vi": "Sí", "los": 4, "apache2": 33, "sofa48": 10}, {"fec_ing": "2025-08-22", "fec_egr": "2025-08-28", "medico": "6 Dr Pablo Rolon", "origen": "Cx Gral Piso", "tipo": "Paciente Qx con complicación Clínica", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "No", "los": 7, "apache2": 19, "sofa48": 3}, {"fec_ing": "2025-08-19", "fec_egr": "2025-08-20", "medico": "6 Dr Pablo Rolon", "origen": "Cx Gral Piso", "tipo": "Cirugía Gral y especialidades Programada", "cond_egreso": "Alta a piso", "kpc": "Pendiente HR ingreso", "vi": "No", "los": 1, "apache2": 10, "sofa48": 1}, {"fec_ing": "2025-08-05", "fec_egr": "2025-08-14", "medico": "6 Dr Pablo Rolon", "origen": "Reanimación", "tipo": "Neurocx Urgencias", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "Sí", "los": 9, "apache2": 10, "sofa48": 5}, {"fec_ing": "2025-08-09", "fec_egr": "2025-08-23", "medico": "6 Dr Pablo Rolon", "origen": "Reanimación", "tipo": "Cirugía Gral y especialidades de Urgencias", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "Sí", "los": 14, "apache2": 2, "sofa48": 3}, {"fec_ing": "2025-08-09", "fec_egr": "2025-08-26", "medico": "1 Dr Oscar Gómez", "origen": "Clínica Médica", "tipo": "Paciente Clínico", "cond_egreso": "Óbito", "kpc": "HR de Prevalencia", "vi": "Sí", "los": 17, "apache2": 16, "sofa48": 8}, {"fec_ing": "2025-07-20", "fec_egr": "2025-08-29", "medico": "1 Dr Oscar Gómez", "origen": "Reanimación", "tipo": "Politrauma(Accidente moto, auto, arrollamiento peatón)", "cond_egreso": "Óbito", "kpc": "HR de Prevalencia", "vi": "Sí", "los": 37, "apache2": 19, "sofa48": 10}, {"fec_ing": "2025-08-08", "fec_egr": "2025-09-12", "medico": "1 Dr Oscar Gómez", "origen": "Neurocx", "tipo": "Cirugía Gral y especialidades Programada", "cond_egreso": "Alta a piso", "kpc": "Negativo", "vi": "No", "los": 35, "apache2": 25, "sofa48": 45}]}</script>
+  async function boot() {
+    try {
+      const payload = await fetchDataJSON();
+      const data = Array.isArray(payload.records) ? payload.records : payload;
 
-<script>
-const cfg = {displayModeBar:false, responsive:true};
-let RAW = []; let FILTERED = [];
-const S = {dateFrom:null,dateTo:null,medico:"",origen:"",tipo:"",cond:"",obitosOnly:false,viOnly:false};
+      const registros = data.map(normalizeRecord);
+      const conFecha = registros.filter(r => !!r.fec_ing);
 
-function median(arr){ const v=arr.filter(x=>Number.isFinite(x)).slice().sort((a,b)=>a-b); if(!v.length) return null; const m=Math.floor(v.length/2); return v.length%2?v[m]:(v[m-1]+v[m])/2;}
-function fmtPct(x){ return x==null ? "—" : (x.toFixed(1)+"%"); }
-function setText(id,t){ const el=document.getElementById(id); if(el) el.textContent=(t==null||t==="")?"—":t; }
-function uniqSorted(arr){ return [...new Set(arr.filter(x=>x&&x.trim()))].sort((a,b)=>a.localeCompare(b,'es',{sensitivity:'base'}));}
+      const updated = payload.updated || new Date().toISOString().slice(0,16).replace('T',' ');
+      document.getElementById('updated').textContent = `Actualizado: ${updated}`;
 
-function applyFilters(){
-  FILTERED = RAW.filter(r=>{
-    if(!r.fec_ing) return false;
-    const d = new Date(r.fec_ing+"T00:00:00Z");
-    if(S.dateFrom && d < new Date(S.dateFrom+"T00:00:00Z")) return false;
-    if(S.dateTo   && d > new Date(S.dateTo+"T00:00:00Z")) return false;
-    if(S.medico && r.medico !== S.medico) return false;
-    if(S.origen && r.origen !== S.origen) return false;
-    if(S.tipo   && r.tipo   !== S.tipo)   return false;
-    if(S.cond   && r.cond_egreso !== S.cond) return false;
-    if(S.obitosOnly && r.cond_egreso !== "Óbito") return false;
-    if(S.viOnly && r.vi !== "Sí") return false;
-    return true;
-  });
-  const badge = document.getElementById('activeFilters'); const parts=[];
-  if(S.dateFrom||S.dateTo) parts.push(`Fecha: ${S.dateFrom||'…'} → ${S.dateTo||'…'}`);
-  if(S.medico) parts.push(`Médico: ${S.medico}`);
-  if(S.origen) parts.push(`Origen: ${S.origen}`);
-  if(S.tipo) parts.push(`Tipo: ${S.tipo}`);
-  if(S.cond) parts.push(`Cond: ${S.cond}`);
-  if(S.obitosOnly) parts.push("Solo óbitos");
-  if(S.viOnly) parts.push("Solo VI=Sí");
-  if(parts.length){ badge.textContent=parts.join(" · "); badge.classList.remove('d-none'); } else { badge.classList.add('d-none'); }
-}
-
-function kpis(){
-  const n=FILTERED.length;
-  const eg=FILTERED.filter(d=>!!d.fec_egr).length;
-  const ob=FILTERED.filter(d=>d.cond_egreso==="Óbito").length;
-  const mort=eg?(ob*100/eg):0;
-  const losArr=FILTERED.map(d=>Number.isFinite(d.los)?d.los:NaN);
-  const apArr =FILTERED.map(d=>Number.isFinite(d.apache2)?d.apache2:NaN);
-  const soArr =FILTERED.map(d=>Number.isFinite(d.sofa48)?d.sofa48:NaN);
-  const viPct=n?(FILTERED.filter(d=>d.vi==="Sí").length*100/n):0;
-  setText('k_adm',n); setText('k_egr',eg); setText('k_ob',ob); setText('k_mort',fmtPct(mort));
-  const mlos=median(losArr); setText('k_los_med', mlos==null?'—':mlos.toFixed(1));
-  const map =median(apArr);  setText('k_ap_med',  map==null?'—':map.toFixed(1));
-  const mso =median(soArr);  setText('k_sofa_med',mso==null?'—':mso.toFixed(1));
-  setText('k_vi', n?fmtPct(viPct):'—');
-}
-
-function groupCount(arr, key, topN=null){
-  const m=new Map(); for(const r of arr){ const v=(r[key]||'—').trim()||'—'; m.set(v,(m.get(v)||0)+1); }
-  let a=[...m.entries()].sort((x,y)=>y[1]-x[1]); if(topN) a=a.slice(0,topN);
-  return { labels:a.map(x=>x[0]), values:a.map(x=>x[1]) };
-}
-function timeSeries(arr){ const m=new Map(); for(const r of arr){ if(!r.fec_ing) continue; m.set(r.fec_ing,(m.get(r.fec_ing)||0)+1); } const dates=[...m.keys()].sort(); return {x:dates,y:dates.map(d=>m.get(d))}; }
-
-function buildCharts(){
-  const ts=timeSeries(FILTERED);
-  Plotly.react('g_ts', [{x:ts.x,y:ts.y,type:'scatter',mode:'lines+markers',fill:'tozeroy',name:'Admisiones'}],
-    {margin:{l:40,r:10,t:10,b:30},xaxis:{rangeslider:{visible:true}},yaxis:{title:"Admisiones/día"},paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)'},{displayModeBar:false,responsive:true});
-  const med=groupCount(FILTERED,'medico',10);
-  Plotly.react('g_med',[{x:med.values.reverse(),y:med.labels.slice().reverse(),type:'bar',orientation:'h'}],
-    {margin:{l:120,r:20,t:10,b:30},xaxis:{title:'Casos'},paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)'},{displayModeBar:false,responsive:true});
-  const org=groupCount(FILTERED,'origen',10);
-  Plotly.react('g_org',[{x:org.values.reverse(),y:org.labels.slice().reverse(),type:'bar',orientation:'h'}],
-    {margin:{l:120,r:20,t:10,b:30},xaxis:{title:'Casos'},paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)'},{displayModeBar:false,responsive:true});
-  const tip=groupCount(FILTERED,'tipo',10);
-  Plotly.react('g_tipo',[{x:tip.values.reverse(),y:tip.labels.slice().reverse(),type:'bar',orientation:'h'}],
-    {margin:{l:120,r:20,t:10,b:30},xaxis:{title:'Casos'},paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)'},{displayModeBar:false,responsive:true});
-  const cond=groupCount(FILTERED,'cond_egreso');
-  Plotly.react('g_cond',[{labels:cond.labels,values:cond.values,type:'pie',hole:.45}],
-    {margin:{l:10,r:10,t:10,b:10},legend:{orientation:'h'},paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)'},{displayModeBar:false,responsive:true});
-  const los=FILTERED.map(d=>Number.isFinite(d.los)?d.los:null).filter(x=>Number.isFinite(x));
-  const maxLos=Math.max(1,...los,1);
-  Plotly.react('g_los',[{x:los,type:'histogram',xbins:{start:0,end:maxLos,size:1}}],
-    {margin:{l:40,r:10,t:10,b:30},xaxis:{title:'Días'},yaxis:{title:'Pacientes'},paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)'},{displayModeBar:false,responsive:true});
-  const kpc=groupCount(FILTERED,'kpc');
-  Plotly.react('g_kpc',[{x:kpc.values.reverse(),y:kpc.labels.slice().reverse(),type:'bar',orientation:'h'}],
-    {margin:{l:120,r:20,t:10,b:30},xaxis:{title:'Pacientes'},paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)'},{displayModeBar:false,responsive:true});
-}
-
-function attachInteractions(){
-  document.getElementById('g_med').on('plotly_click',ev=>{ const label=ev.points?.[0]?.y; if(!label) return; document.getElementById('fMed').value=label; S.medico=label; refreshAll(); });
-  document.getElementById('g_org').on('plotly_click',ev=>{ const label=ev.points?.[0]?.y; if(!label) return; document.getElementById('fOrg').value=label; S.origen=label; refreshAll(); });
-  document.getElementById('g_tipo').on('plotly_click',ev=>{ const label=ev.points?.[0]?.y; if(!label) return; document.getElementById('fTipo').value=label; S.tipo=label; refreshAll(); });
-  document.getElementById('g_cond').on('plotly_click',ev=>{ const label=ev.points?.[0]?.label; if(!label) return; S.cond=(S.cond===label)?"":label; refreshAll(); });
-  document.getElementById('g_ts').on('plotly_relayout',ev=>{
-    const a=ev['xaxis.range[0]']||ev['xaxis.range']?.[0];
-    const b=ev['xaxis.range[1]']||ev['xaxis.range']?.[1];
-    if(a&&b){ S.dateFrom=a.slice(0,10); S.dateTo=b.slice(0,10); document.getElementById('fIni').value=S.dateFrom; document.getElementById('fFin').value=S.dateTo; refreshAll(); }
-  });
-  document.getElementById('fMed').addEventListener('change',e=>{ S.medico=e.target.value; refreshAll(); });
-  document.getElementById('fOrg').addEventListener('change',e=>{ S.origen=e.target.value; refreshAll(); });
-  document.getElementById('fTipo').addEventListener('change',e=>{ S.tipo=e.target.value; refreshAll(); });
-  document.getElementById('fObitos').addEventListener('change',e=>{ S.obitosOnly=e.target.checked; refreshAll(); });
-  document.getElementById('fVI').addEventListener('change',e=>{ S.viOnly=e.target.checked; refreshAll(); });
-  document.getElementById('fIni').addEventListener('change',e=>{ S.dateFrom=e.target.value||null; refreshAll(); });
-  document.getElementById('fFin').addEventListener('change',e=>{ S.dateTo=e.target.value||null; refreshAll(); });
-  document.querySelectorAll('[data-quick]').forEach(btn=>{
-    btn.addEventListener('click',()=>{
-      const q=btn.getAttribute('data-quick');
-      if(q==='all'){ S.dateFrom=null; S.dateTo=null; document.getElementById('fIni').value=''; document.getElementById('fFin').value=''; }
-      else{
-        const dates=[...new Set(RAW.map(r=>r.fec_ing))].sort();
-        if(!dates.length){ refreshAll(); return; }
-        const maxd=dates[dates.length-1];
-        const from=new Date(maxd); from.setDate(from.getDate()-parseInt(q,10));
-        S.dateFrom=from.toISOString().slice(0,10); S.dateTo=maxd;
-        document.getElementById('fIni').value=S.dateFrom; document.getElementById('fFin').value=S.dateTo;
+      if (conFecha.length === 0) {
+        alert("No hay datos con 'Fecha de Ingreso' válida.");
+        return;
       }
-      refreshAll();
-    });
-  });
-  document.getElementById('btnResetAll').addEventListener('click',()=>{
-    S.dateFrom=S.dateTo=null; S.medico=S.origen=S.tipo=S.cond=""; S.obitosOnly=S.viOnly=false;
-    ['fIni','fFin','fMed','fOrg','fTipo'].forEach(id=>{ const el=document.getElementById(id); if(el.tagName==='SELECT') el.value=''; else el.value=''; });
-    document.getElementById('fObitos').checked=false; document.getElementById('fVI').checked=false;
-    refreshAll();
-  });
-}
 
-function setSelectOptions(id, values){
-  const sel=document.getElementById(id); const keep=sel.value;
-  sel.innerHTML='<option value="">Todos</option>'+values.map(v=>`<option>${v}</option>`).join('');
-  if(values.includes(keep)) sel.value=keep;
-}
+      // Aquí puedes llamar a tus funciones de visualización
+      console.log("Registros normalizados:", registros);
 
-function refreshAll(){ applyFilters(); document.getElementById('noData').classList.toggle('d-none', FILTERED.length>0); kpis(); buildCharts(); }
-
-function tryInitFromEmbedded(){
-  try{
-    const raw = document.getElementById('PAYLOAD').textContent;
-    if(!raw) return null;
-    return JSON.parse(raw);
-  }catch(e){ console.warn('No payload embebido', e); return null; }
-}
-
-async function bootstrap(){
-  let payload = tryInitFromEmbedded();
-  if(!payload){
-    // Fallback: intentar assets/data.json por si existe
-    try{
-      const r=await fetch('assets/data.json'); if(r.ok){ payload=await r.json(); }
-    }catch(e){ console.error(e); }
+    } catch (err) {
+      console.error("Error al cargar datos:", err);
+      alert("No se pudo cargar assets/data.json. Revisa la consola.");
+    }
   }
-  if(!payload || !payload.records){ document.getElementById('noData').classList.remove('d-none'); return; }
-  RAW = payload.records;
-  document.getElementById('updated').textContent = "Actualizado: " + (payload.updated || "—");
-  setSelectOptions('fMed',  [...new Set(RAW.map(r=>r.medico))].filter(Boolean).sort());
-  setSelectOptions('fOrg',  [...new Set(RAW.map(r=>r.origen))].filter(Boolean).sort());
-  setSelectOptions('fTipo', [...new Set(RAW.map(r=>r.tipo))].filter(Boolean).sort());
-  // rango por defecto: últimos 180 días
-  const dates=[...new Set(RAW.map(r=>r.fec_ing))].filter(Boolean).sort();
-  if(dates.length){
-    const maxd=dates[dates.length-1]; const from=new Date(maxd); from.setDate(from.getDate()-180);
-    S.dateFrom=from.toISOString().slice(0,10); S.dateTo=maxd;
-    document.getElementById('fIni').value=S.dateFrom; document.getElementById('fFin').value=S.dateTo;
-  }
-  attachInteractions(); refreshAll();
-}
-bootstrap();
-</script>
+
+  boot();
+  </script>
 </body>
 </html>
