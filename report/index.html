@@ -252,7 +252,7 @@ async function bootstrap(){
   if(!payload){
     // Fallback: intentar assets/data.json por si existe
     try{
-      const r=await fetch('assets/data.json'); if(r.ok){ payload=await r.json(); }
+      const r=await fetch('report/assets/data.json'); if(r.ok){ payload=await r.json(); }
     }catch(e){ console.error(e); }
   }
   if(!payload || !payload.records){ document.getElementById('noData').classList.remove('d-none'); return; }
